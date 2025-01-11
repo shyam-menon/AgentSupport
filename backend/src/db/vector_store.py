@@ -111,10 +111,9 @@ class VectorStore:
         Get statistics about the vector store
         """
         try:
-            collection_stats = self.collection.count()
+            collection_info = self.collection.count()
             return {
-                "total_records": collection_stats,
-                "embedding_dim": 1536,  # text-embedding-ada-002 dimension
+                "total_documents": collection_info,
                 "last_updated": datetime.now().isoformat()
             }
         except Exception as e:

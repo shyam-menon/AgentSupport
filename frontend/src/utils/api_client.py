@@ -18,8 +18,11 @@ class APIClient:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
-    def login(self, username: str, password: str) -> bool:
-        """Authenticate user and store token"""
+    def login(self, username: str, password: str) -> dict:
+        """
+        Authenticate user and store token
+        Returns the response data if successful, None if failed
+        """
         try:
             # Use form data instead of JSON for OAuth2 password flow
             data = {
@@ -41,15 +44,16 @@ class APIClient:
             
             if response.status_code == 401:
                 logging.error("Authentication failed - invalid credentials")
-                return False
+                return None
                 
             response.raise_for_status()
             data = response.json()
             self.token = data["access_token"]
-            return True
+            return data
+            
         except Exception as e:
             logging.error(f"Login error: {str(e)}")
-            return False
+            return None
 
     def search_tickets(self, query: Dict) -> List[Dict]:
         """Search for similar tickets"""
@@ -68,8 +72,11 @@ class APIClient:
             logging.error(f"Failed to search tickets: {str(e)}")
             raise Exception(f"Failed to search tickets: {str(e)}")
 
-    def upload_data(self, file) -> bool:
-        """Upload CSV data file"""
+    def upload_data(self, file) -> Dict:
+        """
+        Upload CSV data file
+        Returns: Dict containing processing results
+        """
         try:
             files = {"file": file}
             response = requests.post(
@@ -79,9 +86,25 @@ class APIClient:
             )
             if response.status_code == 401:
                 logging.error("Unauthorized - token may have expired")
-                return False
+                return None
             response.raise_for_status()
-            return True
+            return response.json()
         except Exception as e:
             logging.error(f"Failed to upload data: {str(e)}")
-            return False
+            return None
+
+    def get_system_stats(self) -> Dict:
+        """Get system statistics"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/admin/stats",
+                headers=self._get_headers()
+            )
+            if response.status_code == 401:
+                logging.error("Unauthorized - token may have expired")
+                return None
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logging.error(f"Failed to get system stats: {str(e)}")
+            return None

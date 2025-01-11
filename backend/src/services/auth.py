@@ -8,7 +8,15 @@ users_db = {
         "email": "admin@example.com",
         "hashed_password": "$2b$12$4MGjcGyevRLJQNUOo2b6oOzrToesVyBmVR2/uTJgxUwLMCqzk3CU.",  # "password123"
         "is_active": True,
-        "is_superuser": True
+        "is_superuser": True,
+        "full_name": "Admin User"
+    },
+    "user@example.com": {
+        "email": "user@example.com",
+        "hashed_password": "$2b$12$9Rzp.2Zszdv2pdOq6jveGeoGW28URcVs7Rwf6uaA6VB7ewbKzqh1S",  # "user123"
+        "is_active": True,
+        "is_superuser": False,
+        "full_name": "Regular User"
     }
 }
 
@@ -30,5 +38,5 @@ def authenticate_user(email: str, password: str) -> Optional[User]:
         email=user.email,
         is_active=user.is_active,
         is_admin=user.is_superuser,  # Map superuser to admin
-        full_name=None
+        full_name=user.full_name
     )
