@@ -69,12 +69,23 @@ class VectorStore:
                 collection_data = self.collection.get()
                 if collection_data is None:
                     collection_data = {}
-            except:
+            except Exception as e:
+                logging.error(f"Error getting collection data: {e}")
                 collection_data = {}
             
+            # Get counts safely
+            try:
+                total_records = self.collection.count()
+                embeddings = collection_data.get("embeddings", [])
+                embedding_count = len(embeddings) if embeddings else total_records  # If embeddings not returned, assume 1:1
+            except Exception as e:
+                logging.error(f"Error getting counts: {e}")
+                total_records = 0
+                embedding_count = 0
+            
             # Update stats safely
-            stats["total_records"] = self.collection.count() or 0
-            stats["embedding_count"] = len(collection_data.get("embeddings", []) or [])
+            stats["total_records"] = total_records
+            stats["embedding_count"] = embedding_count
             stats["last_updated"] = datetime.now().isoformat()
             stats["healthy"] = True
             

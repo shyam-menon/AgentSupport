@@ -48,6 +48,11 @@ log/
 # Vector store
 chroma/
 chromadb/
+backend/data/vector_store/
+
+# Generated content
+backend/data/markdown/
+*.md
 
 # Streamlit
 .streamlit/secrets.toml

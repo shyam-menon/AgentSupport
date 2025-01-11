@@ -14,6 +14,14 @@ class AdminService:
         self.vector_store = VectorStore()
         self.markdown_converter = MarkdownConverter()
         self.markdown_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "markdown")
+        os.makedirs(self.markdown_dir, exist_ok=True)
+
+    def _count_markdown_files(self) -> int:
+        """Count markdown files recursively"""
+        count = 0
+        for root, _, files in os.walk(self.markdown_dir):
+            count += sum(1 for f in files if f.endswith('.md'))
+        return count
 
     async def process_csv_file(self, file: UploadFile) -> Dict:
         """
@@ -36,6 +44,12 @@ class AdminService:
             markdown_chunks = self.markdown_converter.convert_dataframe(df)
             if not markdown_chunks:
                 raise Exception("No content generated from CSV")
+            
+            # Save markdown chunks to files
+            for i, chunk in enumerate(markdown_chunks, 1):
+                chunk_file = os.path.join(self.markdown_dir, f"chunk_{i}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md")
+                with open(chunk_file, 'w', encoding='utf-8') as f:
+                    f.write(chunk)
             
             # Add to vector store
             total_chunks = len(markdown_chunks)
@@ -87,13 +101,9 @@ class AdminService:
             
             # Get markdown directory stats
             markdown_size = 0
-            markdown_files = []
+            markdown_count = self._count_markdown_files()
             if os.path.exists(self.markdown_dir):
                 markdown_size = get_directory_size(self.markdown_dir)
-                for root, _, files in os.walk(self.markdown_dir):
-                    for file in files:
-                        if file.endswith('.md'):
-                            markdown_files.append(os.path.join(root, file))
             
             # Get vector store directory size
             vector_store_size = 0
@@ -113,7 +123,7 @@ class AdminService:
                     "sample_metadata": vector_stats.get("sample_records", [{}])[0].get("metadata", {}) if vector_stats.get("sample_records") else {}
                 },
                 "markdown_files": {
-                    "total_files": len(markdown_files),
+                    "total_files": markdown_count,
                     "total_size_mb": markdown_size / (1024 * 1024)
                 }
             }
