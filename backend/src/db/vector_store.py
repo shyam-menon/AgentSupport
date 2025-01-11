@@ -1,16 +1,14 @@
 from typing import Dict, List, Optional
 import chromadb
-from chromadb.config import Settings
 from src.core.config import settings
 import numpy as np
 from datetime import datetime
 
 class VectorStore:
     def __init__(self):
-        self.client = chromadb.Client(Settings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=settings.CHROMA_PERSIST_DIRECTORY
-        ))
+        self.client = chromadb.PersistentClient(
+            path=settings.CHROMA_PERSIST_DIRECTORY
+        )
         self.collection = self.client.get_or_create_collection(
             name="support_tickets",
             metadata={"hnsw:space": "cosine"}
@@ -106,15 +104,16 @@ class VectorStore:
         except Exception as e:
             raise Exception(f"Error searching in vector store: {str(e)}")
 
-    async def get_stats(self) -> Dict:
+    def get_stats(self) -> Dict:
         """
         Get statistics about the vector store
         """
         try:
             collection_info = self.collection.count()
             return {
-                "total_documents": collection_info,
-                "last_updated": datetime.now().isoformat()
+                "total_records": collection_info,
+                "last_updated": datetime.now().isoformat(),
+                "storage_size": 0  # TODO: Implement actual storage size calculation if needed
             }
         except Exception as e:
             raise Exception(f"Error getting vector store stats: {str(e)}")

@@ -99,10 +99,6 @@ class AdminService:
         """
         try:
             stats = self.vector_store.get_stats()
-            return {
-                "total_records": stats.get("total_records", 0),
-                "last_updated": stats.get("last_updated"),
-                "storage_size": stats.get("storage_size", 0)
-            }
+            return stats
         except Exception as e:
             raise Exception(f"Error getting system stats: {str(e)}")

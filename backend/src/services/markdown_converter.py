@@ -12,40 +12,36 @@ class MarkdownConverter:
 
     def create_markdown_for_ticket(self, ticket: Dict) -> str:
         """
-        Creates a concise markdown formatted text for a single JIRA issue.
+        Creates a markdown formatted text for a ticket from any CSV format.
+        Handles missing fields gracefully.
         """
         markdown = []
         
-        # Issue Header with Summary
-        markdown.append(f"# {ticket['Issue key']}: {ticket['Summary'] if pd.notna(ticket['Summary']) else 'No summary'}")
+        # Get the ID field - try common variations
+        id_field = next((field for field in ['Issue key', 'ID', 'Issue id', 'Ticket ID'] 
+                        if field in ticket), None)
+        title_field = next((field for field in ['Summary', 'Title', 'Description'] 
+                          if field in ticket), None)
         
-        # Core Information in a compact format
-        markdown.append(f"**Type:** {ticket['Issue Type']} | **Priority:** {ticket['Priority'] if pd.notna(ticket['Priority']) else 'N/A'} | **Status:** {ticket['Status'] if pd.notna(ticket['Status']) else 'N/A'}")
+        # Create header
+        if id_field and title_field:
+            markdown.append(f"# {ticket[id_field]}: {ticket[title_field] if pd.notna(ticket[title_field]) else 'No title'}")
+        elif id_field:
+            markdown.append(f"# {ticket[id_field]}")
+        elif title_field:
+            markdown.append(f"# {ticket[title_field] if pd.notna(ticket[title_field]) else 'No title'}")
+        else:
+            markdown.append("# Untitled Ticket")
+
+        # Add all other fields as key-value pairs
+        for key, value in ticket.items():
+            if key not in [id_field, title_field] and pd.notna(value):
+                markdown.append(f"**{key}:** {value}")
         
-        # Tracking Info in a single line
-        markdown.append(f"**Created:** {ticket['Created']} | **Updated:** {ticket['Updated']} | **ID:** {ticket['Issue id']}")
-        if pd.notna(ticket['Assignee']) or pd.notna(ticket['Reporter']):
-            markdown.append(f"**Assignee:** {ticket['Assignee'] if pd.notna(ticket['Assignee']) else 'N/A'} | **Reporter:** {ticket['Reporter'] if pd.notna(ticket['Reporter']) else 'N/A'}")
+        # Add empty line for readability
+        markdown.append("")
         
-        # Resolution Details - only include if they exist
-        resolution_parts = []
-        if pd.notna(ticket.get('Custom field (Bug Resolution)')):
-            resolution_parts.append(f"**Bug Resolution:** {ticket['Custom field (Bug Resolution)']}")
-        if pd.notna(ticket.get('Custom field (Root Cause)')):
-            resolution_parts.append(f"**Root Cause:** {ticket['Custom field (Root Cause)']}")
-        if pd.notna(ticket.get('Custom field (Root Cause Analysis)')):
-            resolution_parts.append(f"**Analysis:** {ticket['Custom field (Root Cause Analysis)']}")
-        if pd.notna(ticket.get('Custom field (Root Cause Details)')):
-            details = str(ticket['Custom field (Root Cause Details)']).replace('\r\n', ' ').replace('\n', ' ')
-            resolution_parts.append(f"**Details:** {details}")
-        
-        if resolution_parts:
-            markdown.append(" | ".join(resolution_parts))
-        
-        # Add separator
-        markdown.append("---\n")
-        
-        return '\n'.join(markdown)
+        return "\n".join(markdown)
 
     async def convert_csv_to_markdown(self, csv_path: str) -> List[str]:
         """
