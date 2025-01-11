@@ -30,7 +30,7 @@ async def upload_data(
         logging.info("Starting file processing")
         result = await admin_service.process_csv_file(file)
         logging.info(f"File processing completed: {result}")
-        return {"message": "File processed successfully", "processed_records": result}
+        return result
     except Exception as e:
         logging.error(f"Error processing file: {str(e)}", exc_info=True)
         raise HTTPException(

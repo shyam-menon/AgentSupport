@@ -5,10 +5,12 @@ import os
 from pathlib import Path
 
 class MarkdownConverter:
-    def __init__(self, chunk_size: int = 50):
+    def __init__(self, chunk_size: int = 5):  
         self.chunk_size = chunk_size
         self.markdown_dir = Path("data/markdown")
         self.markdown_dir.mkdir(parents=True, exist_ok=True)
+        self.max_tokens_per_chunk = 2000  
+        self.max_chars_per_chunk = self.max_tokens_per_chunk * 3  
 
     def create_markdown_for_ticket(self, ticket: Dict) -> str:
         """
@@ -33,59 +35,144 @@ class MarkdownConverter:
         else:
             markdown.append("# Untitled Ticket")
 
-        # Add all other fields as key-value pairs
+        # Add all other fields as key-value pairs, one per line
         for key, value in ticket.items():
             if key not in [id_field, title_field] and pd.notna(value):
+                # Clean up any newlines in the value
+                if isinstance(value, str):
+                    value = value.replace('\r\n', ' ').replace('\n', ' ')
                 markdown.append(f"**{key}:** {value}")
         
-        # Add empty line for readability
-        markdown.append("")
+        # Add separator
+        markdown.append("---\n")
         
         return "\n".join(markdown)
 
     async def convert_csv_to_markdown(self, csv_path: str) -> List[str]:
         """
-        Converts a JIRA CSV export file to markdown format, with smaller chunks.
-        Returns a list of markdown file paths.
+        Converts a CSV file to multiple markdown files, with each file containing a chunk of records.
+        Returns a list of paths to the created markdown files.
         """
-        # Read the CSV file
-        df = pd.read_csv(csv_path)
-        total_issues = len(df)
-        
-        # Calculate number of chunks needed
-        num_chunks = (total_issues + self.chunk_size - 1) // self.chunk_size
-        markdown_files = []
-        
-        for chunk_num in range(num_chunks):
-            start_idx = chunk_num * self.chunk_size
-            end_idx = min((chunk_num + 1) * self.chunk_size, total_issues)
+        try:
+            # Read the CSV file
+            df = pd.read_csv(csv_path)
+            total_records = len(df)
             
-            # Create markdown content
-            markdown_content = [f"# JIRA Support Issues Part {chunk_num + 1}/{num_chunks}\n"]
-            markdown_content.append(f"Issues {start_idx + 1} - {end_idx} of {total_issues}\n")
-            markdown_content.append("---\n")
+            # Calculate number of chunks needed
+            num_chunks = (total_records + self.chunk_size - 1) // self.chunk_size
+            markdown_files = []
             
-            # Process each issue in the chunk
-            chunk_df = df.iloc[start_idx:end_idx]
-            for _, issue in chunk_df.iterrows():
-                markdown_content.append(self.create_markdown_for_ticket(issue.to_dict()))
+            for chunk_num in range(num_chunks):
+                start_idx = chunk_num * self.chunk_size
+                end_idx = min((chunk_num + 1) * self.chunk_size, total_records)
+                
+                # Create markdown content for this chunk
+                markdown_content = [f"# Support Records Part {chunk_num + 1}/{num_chunks}\n"]
+                markdown_content.append(f"Records {start_idx + 1} - {end_idx} of {total_records}\n")
+                markdown_content.append("---\n")
+                
+                # Process each record in the chunk
+                chunk_df = df.iloc[start_idx:end_idx]
+                for _, record in chunk_df.iterrows():
+                    markdown_content.append(self.create_markdown_for_ticket(record.to_dict()))
+                
+                # Create output filename
+                output_path = self.markdown_dir / f"chunk_{chunk_num + 1}.md"
+                
+                # Write to file
+                output_path.write_text(''.join(markdown_content), encoding='utf-8')
+                markdown_files.append(str(output_path))
             
-            # Create output filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = self.markdown_dir / f"jira_issues_part{chunk_num + 1}_{timestamp}.md"
+            return markdown_files
             
-            # Write to file
-            output_path.write_text(''.join(markdown_content), encoding='utf-8')
-            markdown_files.append(str(output_path))
-            
-        return markdown_files
+        except Exception as e:
+            raise Exception(f"Error converting CSV to markdown: {str(e)}")
 
-    def get_markdown_content(self, markdown_path: str) -> str:
+    def estimate_token_count(self, text: str) -> int:
         """
-        Reads and returns the content of a markdown file.
+        Rough estimation of token count. This is an approximation.
+        OpenAI typically uses ~4 chars per token on average.
         """
-        with open(markdown_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        return len(text) // 4
+
+    def split_content_by_tokens(self, content: str) -> List[str]:
+        """
+        Split content into parts that don't exceed token limit.
+        Uses a more aggressive splitting strategy.
+        """
+        if len(content) <= self.max_chars_per_chunk:
+            return [content]
+
+        parts = []
+        
+        # First split by double newlines (paragraphs)
+        paragraphs = content.split('\n\n')
+        current_part = []
+        current_length = 0
+        
+        for paragraph in paragraphs:
+            # If a single paragraph is too long, split it by single newlines
+            if len(paragraph) > self.max_chars_per_chunk:
+                if current_part:
+                    parts.append('\n\n'.join(current_part))
+                    current_part = []
+                    current_length = 0
+                
+                # Split long paragraph by single newlines
+                lines = paragraph.split('\n')
+                sub_part = []
+                sub_length = 0
+                
+                for line in lines:
+                    # If a single line is too long, split it into smaller chunks
+                    if len(line) > self.max_chars_per_chunk:
+                        if sub_part:
+                            parts.append('\n'.join(sub_part))
+                        
+                        # Split long line into chunks of max_chars_per_chunk
+                        while line:
+                            chunk = line[:self.max_chars_per_chunk]
+                            parts.append(chunk)
+                            line = line[self.max_chars_per_chunk:]
+                        
+                        sub_part = []
+                        sub_length = 0
+                    else:
+                        if sub_length + len(line) > self.max_chars_per_chunk:
+                            parts.append('\n'.join(sub_part))
+                            sub_part = [line]
+                            sub_length = len(line)
+                        else:
+                            sub_part.append(line)
+                            sub_length += len(line)
+                
+                if sub_part:
+                    parts.append('\n'.join(sub_part))
+            
+            # Normal-sized paragraph
+            elif current_length + len(paragraph) > self.max_chars_per_chunk:
+                parts.append('\n\n'.join(current_part))
+                current_part = [paragraph]
+                current_length = len(paragraph)
+            else:
+                current_part.append(paragraph)
+                current_length += len(paragraph)
+        
+        if current_part:
+            parts.append('\n\n'.join(current_part))
+        
+        return parts
+
+    def get_markdown_content(self, markdown_file: str) -> List[str]:
+        """
+        Read and return the content of a markdown file, split into parts if needed
+        """
+        try:
+            with open(markdown_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                return self.split_content_by_tokens(content)
+        except Exception as e:
+            raise Exception(f"Error reading markdown file: {str(e)}")
 
     def cleanup_markdown_files(self, markdown_files: List[str]):
         """

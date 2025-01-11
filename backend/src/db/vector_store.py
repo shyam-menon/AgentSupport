@@ -16,7 +16,8 @@ class VectorStore:
 
     async def add_records(self, records: List[Dict]):
         """
-        Add records to the vector store
+        Add records to the vector store.
+        PersistentClient automatically persists changes, no need to call persist() explicitly.
         """
         try:
             documents = []
@@ -25,24 +26,17 @@ class VectorStore:
             ids = []
 
             for record in records:
-                # Extract embedding
-                embedding = record.pop("embedding")
+                # Extract embedding and content
+                embedding = record["embedding"]
+                content = record["metadata"]["content"]
+                metadata = record["metadata"]
+                record_id = record["id"]
                 
-                # Prepare document and metadata
-                documents.append(record["description"])
+                # Add to lists
+                documents.append(content)
                 embeddings.append(embedding)
-                metadatas.append({
-                    "id": str(record["id"]),
-                    "title": record["title"],
-                    "issue_type": record.get("issue_type", ""),
-                    "affected_system": record.get("affected_system", ""),
-                    "status": record["status"],
-                    "resolution": record.get("resolution", ""),
-                    "steps": "|".join(record.get("steps", [])),
-                    "created_at": str(record["created_at"]),
-                    "updated_at": str(record["updated_at"])
-                })
-                ids.append(str(record["id"]))
+                metadatas.append(metadata)
+                ids.append(record_id)
 
             # Add to collection
             self.collection.add(
@@ -51,9 +45,6 @@ class VectorStore:
                 metadatas=metadatas,
                 ids=ids
             )
-            
-            # Persist changes
-            self.client.persist()
             
         except Exception as e:
             raise Exception(f"Error adding records to vector store: {str(e)}")
@@ -88,15 +79,15 @@ class VectorStore:
                 metadata = results["metadatas"][0][i]
                 processed_results.append({
                     "id": int(metadata["id"]),
-                    "title": metadata["title"],
+                    "title": metadata.get("title"),
                     "description": results["documents"][0][i],
                     "issue_type": metadata.get("issue_type"),
                     "affected_system": metadata.get("affected_system"),
-                    "status": metadata["status"],
+                    "status": metadata.get("status"),
                     "resolution": metadata.get("resolution"),
                     "steps": metadata.get("steps", "").split("|") if metadata.get("steps") else [],
-                    "created_at": datetime.fromisoformat(metadata["created_at"]),
-                    "updated_at": datetime.fromisoformat(metadata["updated_at"])
+                    "created_at": datetime.fromisoformat(metadata.get("created_at")),
+                    "updated_at": datetime.fromisoformat(metadata.get("updated_at"))
                 })
 
             return processed_results
@@ -109,11 +100,24 @@ class VectorStore:
         Get statistics about the vector store
         """
         try:
-            collection_info = self.collection.count()
-            return {
-                "total_records": collection_info,
+            count = self.collection.count()
+            peek = self.collection.peek(limit=1)
+            
+            stats = {
+                "total_records": count,
                 "last_updated": datetime.now().isoformat(),
-                "storage_size": 0  # TODO: Implement actual storage size calculation if needed
+                "has_data": count > 0,
+                "sample_record": None
             }
+            
+            if peek and peek['ids']:
+                # Get a sample record to verify data structure
+                stats["sample_record"] = {
+                    "id": peek['ids'][0],
+                    "metadata": peek['metadatas'][0] if peek['metadatas'] else None
+                }
+            
+            return stats
+            
         except Exception as e:
             raise Exception(f"Error getting vector store stats: {str(e)}")
