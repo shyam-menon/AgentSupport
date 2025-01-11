@@ -22,13 +22,24 @@ class MarkdownConverter:
         # Core Information
         status = ticket.get('status', 'N/A')
         issue_type = ticket.get('issue_type', 'N/A')
+        priority = ticket.get('priority', 'N/A')
         affected_system = ticket.get('affected_system', 'N/A')
-        markdown.append(f"Type: {issue_type} | Status: {status} | System: {affected_system}")
+        markdown.append(f"**Type:** {issue_type} | **Priority:** {priority} | **Status:** {status} | **System:** {affected_system}")
+        
+        # Assignment Information
+        assignee = ticket.get('assignee', 'Unassigned')
+        reporter = ticket.get('reporter', 'N/A')
+        markdown.append(f"**Assignee:** {assignee} | **Reporter:** {reporter}")
         
         # Timestamps
         created = ticket.get('created_at', 'N/A')
         updated = ticket.get('updated_at', 'N/A')
-        markdown.append(f"Created: {created} | Updated: {updated}")
+        markdown.append(f"**Created:** {created} | **Updated:** {updated}")
+        
+        # Summary
+        if title := ticket.get('title'):
+            markdown.append("\n## Summary")
+            markdown.append(title)
         
         # Description
         if description := ticket.get('description'):
@@ -39,6 +50,23 @@ class MarkdownConverter:
         if resolution := ticket.get('resolution'):
             markdown.append("\n## Resolution")
             markdown.append(resolution)
+            
+            if resolution_note := ticket.get('resolution_note'):
+                markdown.append("\n### Resolution Notes")
+                markdown.append(resolution_note)
+        
+        # Root Cause Analysis
+        if root_cause := ticket.get('root_cause'):
+            markdown.append("\n## Root Cause Analysis")
+            markdown.append(f"**Root Cause:** {root_cause}")
+            
+            if root_cause_analysis := ticket.get('root_cause_analysis'):
+                markdown.append("\n### Analysis")
+                markdown.append(root_cause_analysis)
+                
+            if root_cause_details := ticket.get('root_cause_details'):
+                markdown.append("\n### Details")
+                markdown.append(root_cause_details)
         
         # Steps
         if steps := ticket.get('steps'):

@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from src.services.markdown_converter import MarkdownConverter
+from src.services.embedding import EmbeddingService
 
 def show_admin():
     st.title("Admin Dashboard")
@@ -15,6 +17,11 @@ def show_admin():
     if not user_data.get("is_admin", False):
         st.error("You do not have permission to access this page")
         return
+    
+    # Initialize services if not exists
+    if "markdown_service" not in st.session_state:
+        st.session_state.markdown_service = MarkdownConverter()
+        st.session_state.embedding_service = EmbeddingService()
     
     # Tabs for different admin functions
     tab1, tab2, tab3 = st.tabs(["Data Upload", "System Stats", "User Management"])
@@ -39,7 +46,10 @@ def show_data_upload():
             df = pd.read_csv(uploaded_file)
             
             # Basic validation
-            required_columns = ['title', 'description', 'status']
+            required_columns = [
+                'Issue Type', 'Priority', 'Issue key', 'Summary', 
+                'Status', 'Created', 'Updated'
+            ]
             missing_columns = [col for col in required_columns if col not in df.columns]
             
             if missing_columns:
