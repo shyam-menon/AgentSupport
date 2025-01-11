@@ -13,7 +13,14 @@ class APIClient:
 
     def _get_headers(self):
         """Get headers with authentication token if available"""
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}  
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        return headers
+
+    def _get_form_headers(self):
+        """Get headers for form data with authentication token if available"""
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
@@ -30,17 +37,12 @@ class APIClient:
                 "password": password,
                 "grant_type": "password"
             }
-            print(f"Making login request to: {self.base_url}/auth/token")
-            print(f"Headers: {self._get_headers()}")
-            print(f"Data: {data}")
             
             response = requests.post(
                 f"{self.base_url}/auth/token",
                 data=data,
-                headers=self._get_headers()  
+                headers=self._get_form_headers()  # Use form headers for login
             )
-            print(f"Response status: {response.status_code}")
-            print(f"Response body: {response.text}")
             
             if response.status_code == 401:
                 logging.error("Authentication failed - invalid credentials")

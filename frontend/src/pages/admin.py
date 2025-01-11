@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import datetime
 from src.services.markdown_converter import MarkdownConverter
 from src.services.embedding import EmbeddingService
+import tempfile
+import os
 
 def show_admin():
     st.title("Admin Dashboard")
@@ -45,49 +47,84 @@ def show_data_upload():
             # Preview the data
             df = pd.read_csv(uploaded_file)
             
-            # Basic validation
-            required_columns = [
-                'Issue Type', 'Priority', 'Issue key', 'Summary', 
-                'Status', 'Created', 'Updated'
-            ]
-            missing_columns = [col for col in required_columns if col not in df.columns]
+            # Map the columns to expected format
+            column_mapping = {
+                'Issue Type': 'issue_type',
+                'Priority': 'priority',
+                'Issue key': 'id',
+                'Summary': 'title',
+                'Status': 'status',
+                'Assignee': 'assignee',
+                'Reporter': 'reporter',
+                'Created': 'created_at',
+                'Updated': 'updated_at',
+                'Custom field (Bug Resolution)': 'resolution',
+                'Custom field (Section/Asset Team)': 'affected_system',
+                'Summary': 'description',  # Using Summary as description for now
+            }
+            
+            # Check if required source columns exist
+            source_columns = list(column_mapping.keys())
+            missing_columns = [col for col in source_columns if col not in df.columns]
             
             if missing_columns:
                 st.error(f"Missing required columns: {', '.join(missing_columns)}")
+                st.info("The CSV file must contain the following columns: " + ", ".join(source_columns))
                 return
             
-            st.write("Preview of uploaded data:")
-            st.dataframe(df.head())
+            # Rename columns to match expected format
+            df_processed = df.rename(columns=column_mapping)
+            
+            # Save processed DataFrame to a temporary CSV
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='w', newline='', encoding='utf-8') as temp_file:
+                df_processed.to_csv(temp_file.name, index=False)
+                temp_file_path = temp_file.name
+            
+            st.write("Preview of processed data:")
+            st.dataframe(df_processed.head())
             
             # Display file statistics
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total Records", len(df))
+                st.metric("Total Records", len(df_processed))
             with col2:
-                st.metric("Columns", len(df.columns))
+                st.metric("Columns", len(df_processed.columns))
             
             # Process button with progress bar
             if st.button("Process Data"):
                 with st.spinner("Processing data..."):
                     try:
-                        # Reset the file pointer
-                        uploaded_file.seek(0)
+                        # Check if user is logged in and has admin privileges
+                        if not st.session_state.get("access_token"):
+                            st.error("Please log in first")
+                            return
                         
-                        # Upload to backend
-                        response = st.session_state.api_client.upload_data(uploaded_file)
-                        
-                        if response and response.get("total_processed"):
-                            st.success(f"""
-                                Data processed successfully!
-                                - Total records processed: {response['total_processed']}
-                                - Markdown files generated: {response.get('markdown_files_generated', 0)}
-                            """)
-                        else:
-                            st.error("Failed to process data")
+                        user_data = st.session_state.get("user", {})
+                        if not user_data.get("is_admin", False):
+                            st.error("You do not have permission to access this page")
+                            return
                             
+                        # Create a file object from the temp file
+                        with open(temp_file_path, 'rb') as processed_file:
+                            # Upload to backend
+                            response = st.session_state.api_client.upload_data(processed_file)
+                            
+                            if response and response.get("total_processed"):
+                                st.success(f"""
+                                    Data processed successfully!
+                                    - Total records processed: {response['total_processed']}
+                                    - Markdown files generated: {response.get('markdown_files_generated', 0)}
+                                """)
+                            else:
+                                st.error("Failed to process data. Please check your permissions and try again.")
                     except Exception as e:
                         st.error(f"Error processing file: {str(e)}")
-                        
+                    finally:
+                        # Clean up temporary file
+                        try:
+                            os.remove(temp_file_path)
+                        except:
+                            pass
         except Exception as e:
             st.error(f"Error reading file: {str(e)}")
 
