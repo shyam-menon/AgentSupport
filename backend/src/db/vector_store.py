@@ -3,16 +3,26 @@ import chromadb
 from src.core.config import settings
 import numpy as np
 from datetime import datetime
+import logging
+import os
 
 class VectorStore:
     def __init__(self):
+        # Ensure the ChromaDB directory exists
+        chroma_dir = settings.CHROMA_PERSIST_DIRECTORY
+        if not os.path.exists(chroma_dir):
+            logging.info(f"Creating ChromaDB directory: {chroma_dir}")
+            os.makedirs(chroma_dir, exist_ok=True)
+        
+        logging.info(f"Initializing ChromaDB with persist directory: {chroma_dir}")
         self.client = chromadb.PersistentClient(
-            path=settings.CHROMA_PERSIST_DIRECTORY
+            path=chroma_dir
         )
         self.collection = self.client.get_or_create_collection(
             name="support_tickets",
             metadata={"hnsw:space": "cosine"}
         )
+        logging.info(f"Connected to ChromaDB collection: {self.collection.name}")
 
     async def add_records(self, records: List[Dict]):
         """
@@ -100,14 +110,19 @@ class VectorStore:
         Get statistics about the vector store
         """
         try:
+            logging.info("Getting vector store stats...")
             count = self.collection.count()
+            logging.info(f"Collection count: {count}")
+            
             peek = self.collection.peek(limit=1)
+            logging.info(f"Peek result: {peek}")
             
             stats = {
                 "total_records": count,
                 "last_updated": datetime.now().isoformat(),
                 "has_data": count > 0,
-                "sample_record": None
+                "sample_record": None,
+                "collection_name": self.collection.name
             }
             
             if peek and peek['ids']:
@@ -117,7 +132,9 @@ class VectorStore:
                     "metadata": peek['metadatas'][0] if peek['metadatas'] else None
                 }
             
+            logging.info(f"Final vector store stats: {stats}")
             return stats
             
         except Exception as e:
+            logging.error(f"Error getting vector store stats: {str(e)}", exc_info=True)
             raise Exception(f"Error getting vector store stats: {str(e)}")

@@ -3,17 +3,21 @@ from typing import Dict, List
 import os
 from dotenv import load_dotenv
 import logging
+import streamlit as st
 
 load_dotenv()
 
 class APIClient:
     def __init__(self):
         self.base_url = os.getenv("BACKEND_URL", "http://localhost:8080")
-        self.token = None
+        # Initialize token from session state if available
+        self.token = st.session_state.get("access_token")
 
     def _get_headers(self):
         """Get headers with authentication token if available"""
         headers = {}
+        # Always get latest token from session state
+        self.token = st.session_state.get("access_token")
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
@@ -21,6 +25,8 @@ class APIClient:
     def _get_form_headers(self):
         """Get headers for form data with authentication token if available"""
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        # Always get latest token from session state
+        self.token = st.session_state.get("access_token")
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
@@ -28,6 +34,8 @@ class APIClient:
     def _get_multipart_headers(self):
         """Get headers for multipart form data (file uploads) with authentication token if available"""
         headers = {}  # Don't set Content-Type, let requests set it with boundary
+        # Always get latest token from session state
+        self.token = st.session_state.get("access_token")
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers

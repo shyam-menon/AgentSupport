@@ -4,6 +4,8 @@ from src.pages.search import show_search
 from src.pages.admin import show_admin
 from src.components.login import show_login
 from src.utils.api_client import APIClient
+from src.utils.auth import init_auth, get_auth_status
+import logging
 
 def main():
     st.set_page_config(
@@ -16,17 +18,21 @@ def main():
     if "api_client" not in st.session_state:
         st.session_state.api_client = APIClient()
 
+    # Initialize auth state from URL params
+    init_auth()
+    auth_status = get_auth_status()
+
     # Show login component in sidebar
     with st.sidebar:
         show_login()
 
     # Navigation - only show if logged in
-    if st.session_state.get("access_token"):
+    if auth_status["is_authenticated"]:
         st.sidebar.title("Navigation")
         options = ["Home", "Search"]
         
         # Add Admin option if user has admin privileges
-        if st.session_state.get("user", {}).get("is_admin", False):
+        if auth_status["user"].get("is_admin", False):
             options.append("Admin")
             
         page = st.sidebar.radio("Go to", options)
