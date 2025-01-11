@@ -109,6 +109,41 @@ deactivate
 2. Update the Azure OpenAI credentials in `backend/.env`
 3. Generate a secure random string for `SECRET_KEY` in `backend/.env`
 
+### 5. Activating Virtual Environments
+
+#### For Backend:
+```bash
+# Navigate to backend directory
+cd backend
+
+# Activate the virtual environment
+.\venv\Scripts\activate
+
+# Your prompt should now show (venv) indicating the environment is active
+# Run the backend server
+python -m uvicorn src.main:app --host localhost --port 8080 --log-level info
+```
+
+#### For Frontend:
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Activate the virtual environment
+.\venv\Scripts\activate
+
+# Your prompt should now show (venv) indicating the environment is active
+# Run the frontend application
+streamlit run run_app.py
+```
+
+To deactivate the virtual environment when you're done:
+```bash
+deactivate
+```
+
+Note: Always ensure you're running commands from a terminal with the appropriate virtual environment activated. The terminal prompt should show `(venv)` when the virtual environment is active.
+
 ## Project Structure
 
 ```
