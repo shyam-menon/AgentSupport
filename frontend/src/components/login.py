@@ -8,20 +8,20 @@ def show_login():
         st.session_state.user = None
         
     if st.session_state.access_token:
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.write(f"Logged in as: {st.session_state.user.get('email')}")
-        with col2:
-            if st.button("Logout"):
-                st.session_state.access_token = None
-                st.session_state.user = None
-                st.rerun()
+        st.write(f"Logged in as:")
+        st.markdown(f"[{st.session_state.user.get('email')}](mailto:{st.session_state.user.get('email')})")
+        if st.button("Logout", key="logout_button", use_container_width=True):
+            # Clear all session state
+            st.session_state.access_token = None
+            st.session_state.user = None
+            st.session_state.api_client.token = None
+            st.rerun()
     else:
         with st.form("login_form"):
             st.subheader("Login")
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Login")
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            submitted = st.form_submit_button("Login", use_container_width=True)
             
             if submitted:
                 if not email or not password:

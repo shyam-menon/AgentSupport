@@ -21,9 +21,3 @@ def show_home():
     
     For administrative tasks like data management, please use the Admin section.
     """)
-    
-    # Display user info
-    st.sidebar.write("---")
-    if st.sidebar.button("Logout"):
-        st.session_state.authenticated = False
-        st.experimental_rerun()

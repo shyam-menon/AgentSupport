@@ -26,6 +26,47 @@ For development purposes, use these credentials:
 - Username: admin@example.com
 - Password: password123
 
+## Authentication
+
+The system supports two types of users:
+
+### 1. Admin User
+- Email: admin@example.com
+- Password: password123
+- Permissions:
+  - Access to Home and Search pages
+  - Access to Admin dashboard
+  - Can upload and process CSV files
+  - Can view system statistics
+
+### 2. Regular User
+- Email: user@example.com
+- Password: user123
+- Permissions:
+  - Access to Home and Search pages
+  - Cannot access Admin dashboard
+
+### Features by Role
+
+#### Admin Features
+- Full access to search functionality
+- Upload CSV files for processing
+- Convert CSV data to markdown format
+- Generate embeddings using Azure OpenAI
+- View system statistics
+- Manage ticket data
+
+#### Regular User Features
+- Search through existing tickets
+- View similar cases and solutions
+- Access historical support data
+
+### Security
+- JWT-based authentication
+- Role-based access control
+- Secure password hashing using bcrypt
+- Token expiration and refresh
+
 ## Configuration
 
 ### Backend Configuration
