@@ -3,6 +3,7 @@ from typing import List, Dict
 from datetime import datetime
 import os
 from pathlib import Path
+import logging
 
 class MarkdownConverter:
     def __init__(self, chunk_size: int = 5):  
@@ -173,6 +174,44 @@ class MarkdownConverter:
                 return self.split_content_by_tokens(content)
         except Exception as e:
             raise Exception(f"Error reading markdown file: {str(e)}")
+
+    def convert_dataframe(self, df: pd.DataFrame) -> List[str]:
+        """Convert DataFrame to markdown chunks"""
+        try:
+            if df.empty:
+                raise ValueError("DataFrame is empty")
+
+            # Convert each row to markdown
+            markdown_chunks = []
+            for i in range(0, len(df), self.chunk_size):
+                chunk_df = df.iloc[i:i + self.chunk_size]
+                
+                # Create markdown content for this chunk
+                chunk_content = []
+                for _, row in chunk_df.iterrows():
+                    # Add row as section
+                    chunk_content.append("## Row Content")
+                    
+                    # Add each column as a subsection
+                    for col in row.index:
+                        value = row[col]
+                        if pd.notna(value):  # Skip NaN/None values
+                            chunk_content.append(f"### {col}")
+                            chunk_content.append(str(value))
+                            chunk_content.append("")  # Empty line for readability
+                
+                # Join chunk content and add to chunks
+                if chunk_content:
+                    markdown_chunks.append("\n".join(chunk_content))
+
+            if not markdown_chunks:
+                raise ValueError("No valid content found in DataFrame")
+
+            return markdown_chunks
+
+        except Exception as e:
+            logging.error(f"Error converting DataFrame to markdown: {e}")
+            raise Exception(f"Error converting DataFrame to markdown: {str(e)}")
 
     def cleanup_markdown_files(self, markdown_files: List[str]):
         """

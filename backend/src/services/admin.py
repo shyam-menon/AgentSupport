@@ -1,126 +1,139 @@
-import pandas as pd
-import tempfile
 import os
-from fastapi import UploadFile
 from typing import Dict, List
-from src.services.embedding import EmbeddingService
+import pandas as pd
+from datetime import datetime
+import logging
+import tempfile
+from fastapi import UploadFile
 from src.db.vector_store import VectorStore
 from src.services.markdown_converter import MarkdownConverter
-import logging
+from src.utils.file_utils import get_directory_size
 
 class AdminService:
     def __init__(self):
-        self.embedding_service = EmbeddingService()
         self.vector_store = VectorStore()
-        self.markdown_converter = MarkdownConverter(chunk_size=50)  # Set chunk size to 50
+        self.markdown_converter = MarkdownConverter()
+        self.markdown_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "markdown")
 
     async def process_csv_file(self, file: UploadFile) -> Dict:
         """
-        Process uploaded CSV file:
-        1. Save to temporary file
-        2. Convert to markdown files (chunked)
-        3. Generate embeddings for each markdown chunk
-        4. Store in vector database
-        5. Clean up temporary files
+        Process uploaded CSV file
         """
+        temp_file_path = None
         try:
-            # Save uploaded file to temporary file
+            # Save uploaded file to temp file
             with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as temp_file:
+                temp_file_path = temp_file.name
                 content = await file.read()
                 temp_file.write(content)
-                temp_file_path = temp_file.name
-            logging.info(f"Saved uploaded file to temporary path: {temp_file_path}")
-
-            # Convert CSV to markdown files (chunked)
-            markdown_files = await self.markdown_converter.convert_csv_to_markdown(temp_file_path)
-            logging.info(f"Generated {len(markdown_files)} markdown files")
             
-            total_processed = 0
-            for markdown_file in markdown_files:
-                # Get markdown content parts that fit within token limit
-                content_parts = self.markdown_converter.get_markdown_content(markdown_file)
-                logging.info(f"Processing {markdown_file} - split into {len(content_parts)} parts")
+            # Read CSV file
+            df = pd.read_csv(temp_file_path)
+            if df.empty:
+                raise Exception("CSV file is empty")
+            
+            # Convert to markdown
+            markdown_chunks = self.markdown_converter.convert_dataframe(df)
+            if not markdown_chunks:
+                raise Exception("No content generated from CSV")
+            
+            # Add to vector store
+            total_chunks = len(markdown_chunks)
+            records = []
+            
+            for i, chunk in enumerate(markdown_chunks, 1):
+                logging.info(f"Processing chunk {i}/{total_chunks}")
                 
-                for part_index, content in enumerate(content_parts):
-                    # Generate embedding for this part
-                    embedding = await self.embedding_service.generate_embedding(content)
-                    
-                    # Get metadata from the markdown file
-                    metadata = {
-                        "source": os.path.basename(markdown_file),
-                        "chunk_number": int(os.path.basename(markdown_file).split('_')[1].split('.')[0]),
-                        "part_number": part_index + 1,
-                        "total_parts": len(content_parts),
-                        "content": content
+                # Create record with content and metadata
+                record = {
+                    "content": chunk,  # Content at top level
+                    "metadata": {
+                        "source": file.filename,
+                        "chunk_id": f"chunk_{i}",
+                        "total_chunks": total_chunks,
+                        "processed_at": datetime.now().isoformat()
                     }
-                    logging.info(f"Generated embedding for chunk {metadata['chunk_number']} part {metadata['part_number']}")
-                    
-                    # Add to vector store
-                    await self.vector_store.add_records([{
-                        "id": f"chunk_{total_processed + 1}_part_{part_index + 1}",
-                        "embedding": embedding.tolist(),
-                        "metadata": metadata
-                    }])
-                    logging.info(f"Added record to vector store: chunk_{total_processed + 1}_part_{part_index + 1}")
-                    
-                    total_processed += 1
+                }
+                records.append(record)
             
-            # Clean up temporary files
-            os.unlink(temp_file_path)
-            self.markdown_converter.cleanup_markdown_files(markdown_files)
-            logging.info("Cleaned up temporary files")
-            
-            # Get final stats
-            final_stats = self.vector_store.get_stats()
-            logging.info(f"Final vector store stats: {final_stats}")
+            # Add all records at once
+            await self.vector_store.add_records(records)
             
             return {
                 "status": "success",
-                "total_processed": total_processed,
-                "message": f"Successfully processed {total_processed} chunks",
-                "vector_store_stats": final_stats
+                "total_processed": total_chunks,
+                "message": f"Successfully processed {total_chunks} chunks"
             }
             
         except Exception as e:
-            # Clean up temporary files in case of error
-            if 'temp_file_path' in locals():
-                os.unlink(temp_file_path)
-            if 'markdown_files' in locals():
-                self.markdown_converter.cleanup_markdown_files(markdown_files)
-            logging.error(f"Error processing file: {str(e)}", exc_info=True)
+            logging.error(f"Error processing file: {str(e)}")
             raise Exception(f"Error processing file: {str(e)}")
+        
+        finally:
+            # Clean up temp file
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
 
     async def get_system_stats(self) -> Dict:
         """
-        Get system statistics including vector store info
+        Get system statistics
         """
         try:
             # Get vector store stats
             vector_stats = self.vector_store.get_stats()
             
             # Get markdown directory stats
+            markdown_size = 0
             markdown_files = []
-            if os.path.exists(self.markdown_converter.markdown_dir):
-                markdown_files = [f for f in os.listdir(self.markdown_converter.markdown_dir) 
-                                if f.endswith('.md')]
+            if os.path.exists(self.markdown_dir):
+                markdown_size = get_directory_size(self.markdown_dir)
+                for root, _, files in os.walk(self.markdown_dir):
+                    for file in files:
+                        if file.endswith('.md'):
+                            markdown_files.append(os.path.join(root, file))
             
+            # Get vector store directory size
+            vector_store_size = 0
+            vector_store_dir = self.vector_store.get_store_path()
+            if os.path.exists(vector_store_dir):
+                vector_store_size = get_directory_size(vector_store_dir)
+            
+            # Format stats
             stats = {
                 "status": "success",
                 "vector_store": {
-                    "total_records": vector_stats["total_records"],
-                    "last_updated": vector_stats["last_updated"],
-                    "has_data": vector_stats["has_data"],
-                    "sample_metadata": vector_stats.get("sample_record", {}).get("metadata", {})
+                    "total_records": vector_stats.get("total_records", 0),
+                    "total_embeddings": vector_stats.get("embedding_count", 0),
+                    "last_updated": vector_stats.get("last_updated", "Never"),
+                    "has_data": vector_stats.get("healthy", False),
+                    "total_size_mb": vector_store_size / (1024 * 1024),
+                    "sample_metadata": vector_stats.get("sample_records", [{}])[0].get("metadata", {}) if vector_stats.get("sample_records") else {}
                 },
                 "markdown_files": {
                     "total_files": len(markdown_files),
-                    "files": markdown_files[:5]  # Show first 5 files as sample
+                    "total_size_mb": markdown_size / (1024 * 1024)
                 }
             }
             
-            logging.info(f"System stats: {stats}")
             return stats
             
         except Exception as e:
-            logging.error(f"Error getting system stats: {str(e)}", exc_info=True)
-            raise Exception(f"Error getting system stats: {str(e)}")
+            logging.error(f"Error getting system stats: {str(e)}")
+            return {
+                "status": "error",
+                "vector_store": {
+                    "total_records": 0,
+                    "total_embeddings": 0,
+                    "last_updated": "Never",
+                    "has_data": False,
+                    "total_size_mb": 0,
+                    "sample_metadata": {}
+                },
+                "markdown_files": {
+                    "total_files": 0,
+                    "total_size_mb": 0
+                }
+            }
