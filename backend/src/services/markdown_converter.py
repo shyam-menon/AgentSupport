@@ -12,109 +12,74 @@ class MarkdownConverter:
 
     def create_markdown_for_ticket(self, ticket: Dict) -> str:
         """
-        Creates markdown formatted text for a single ticket.
+        Creates a concise markdown formatted text for a single JIRA issue.
         """
         markdown = []
         
-        # Ticket Header with Title
-        markdown.append(f"# {ticket.get('id', 'No ID')}: {ticket.get('title', 'No Title')}")
+        # Issue Header with Summary
+        markdown.append(f"# {ticket['Issue key']}: {ticket['Summary'] if pd.notna(ticket['Summary']) else 'No summary'}")
         
-        # Core Information
-        status = ticket.get('status', 'N/A')
-        issue_type = ticket.get('issue_type', 'N/A')
-        priority = ticket.get('priority', 'N/A')
-        affected_system = ticket.get('affected_system', 'N/A')
-        markdown.append(f"**Type:** {issue_type} | **Priority:** {priority} | **Status:** {status} | **System:** {affected_system}")
+        # Core Information in a compact format
+        markdown.append(f"**Type:** {ticket['Issue Type']} | **Priority:** {ticket['Priority'] if pd.notna(ticket['Priority']) else 'N/A'} | **Status:** {ticket['Status'] if pd.notna(ticket['Status']) else 'N/A'}")
         
-        # Assignment Information
-        assignee = ticket.get('assignee', 'Unassigned')
-        reporter = ticket.get('reporter', 'N/A')
-        markdown.append(f"**Assignee:** {assignee} | **Reporter:** {reporter}")
+        # Tracking Info in a single line
+        markdown.append(f"**Created:** {ticket['Created']} | **Updated:** {ticket['Updated']} | **ID:** {ticket['Issue id']}")
+        if pd.notna(ticket['Assignee']) or pd.notna(ticket['Reporter']):
+            markdown.append(f"**Assignee:** {ticket['Assignee'] if pd.notna(ticket['Assignee']) else 'N/A'} | **Reporter:** {ticket['Reporter'] if pd.notna(ticket['Reporter']) else 'N/A'}")
         
-        # Timestamps
-        created = ticket.get('created_at', 'N/A')
-        updated = ticket.get('updated_at', 'N/A')
-        markdown.append(f"**Created:** {created} | **Updated:** {updated}")
+        # Resolution Details - only include if they exist
+        resolution_parts = []
+        if pd.notna(ticket.get('Custom field (Bug Resolution)')):
+            resolution_parts.append(f"**Bug Resolution:** {ticket['Custom field (Bug Resolution)']}")
+        if pd.notna(ticket.get('Custom field (Root Cause)')):
+            resolution_parts.append(f"**Root Cause:** {ticket['Custom field (Root Cause)']}")
+        if pd.notna(ticket.get('Custom field (Root Cause Analysis)')):
+            resolution_parts.append(f"**Analysis:** {ticket['Custom field (Root Cause Analysis)']}")
+        if pd.notna(ticket.get('Custom field (Root Cause Details)')):
+            details = str(ticket['Custom field (Root Cause Details)']).replace('\r\n', ' ').replace('\n', ' ')
+            resolution_parts.append(f"**Details:** {details}")
         
-        # Summary
-        if title := ticket.get('title'):
-            markdown.append("\n## Summary")
-            markdown.append(title)
-        
-        # Description
-        if description := ticket.get('description'):
-            markdown.append("\n## Description")
-            markdown.append(description)
-        
-        # Resolution
-        if resolution := ticket.get('resolution'):
-            markdown.append("\n## Resolution")
-            markdown.append(resolution)
-            
-            if resolution_note := ticket.get('resolution_note'):
-                markdown.append("\n### Resolution Notes")
-                markdown.append(resolution_note)
-        
-        # Root Cause Analysis
-        if root_cause := ticket.get('root_cause'):
-            markdown.append("\n## Root Cause Analysis")
-            markdown.append(f"**Root Cause:** {root_cause}")
-            
-            if root_cause_analysis := ticket.get('root_cause_analysis'):
-                markdown.append("\n### Analysis")
-                markdown.append(root_cause_analysis)
-                
-            if root_cause_details := ticket.get('root_cause_details'):
-                markdown.append("\n### Details")
-                markdown.append(root_cause_details)
-        
-        # Steps
-        if steps := ticket.get('steps'):
-            markdown.append("\n## Steps")
-            for i, step in enumerate(steps, 1):
-                markdown.append(f"{i}. {step}")
+        if resolution_parts:
+            markdown.append(" | ".join(resolution_parts))
         
         # Add separator
-        markdown.append("\n---\n")
+        markdown.append("---\n")
         
         return '\n'.join(markdown)
 
     async def convert_csv_to_markdown(self, csv_path: str) -> List[str]:
         """
-        Converts a CSV file to multiple markdown files.
+        Converts a JIRA CSV export file to markdown format, with smaller chunks.
         Returns a list of markdown file paths.
         """
         # Read the CSV file
         df = pd.read_csv(csv_path)
-        total_tickets = len(df)
+        total_issues = len(df)
         
         # Calculate number of chunks needed
-        num_chunks = (total_tickets + self.chunk_size - 1) // self.chunk_size
+        num_chunks = (total_issues + self.chunk_size - 1) // self.chunk_size
         markdown_files = []
         
         for chunk_num in range(num_chunks):
             start_idx = chunk_num * self.chunk_size
-            end_idx = min((chunk_num + 1) * self.chunk_size, total_tickets)
+            end_idx = min((chunk_num + 1) * self.chunk_size, total_issues)
             
             # Create markdown content
-            markdown_content = [
-                f"# Support Tickets Part {chunk_num + 1}/{num_chunks}",
-                f"Tickets {start_idx + 1} - {end_idx} of {total_tickets}\n",
-                "---\n"
-            ]
+            markdown_content = [f"# JIRA Support Issues Part {chunk_num + 1}/{num_chunks}\n"]
+            markdown_content.append(f"Issues {start_idx + 1} - {end_idx} of {total_issues}\n")
+            markdown_content.append("---\n")
             
-            # Process each ticket in the chunk
+            # Process each issue in the chunk
             chunk_df = df.iloc[start_idx:end_idx]
-            for _, ticket in chunk_df.iterrows():
-                ticket_dict = ticket.to_dict()
-                markdown_content.append(self.create_markdown_for_ticket(ticket_dict))
+            for _, issue in chunk_df.iterrows():
+                markdown_content.append(self.create_markdown_for_ticket(issue.to_dict()))
             
             # Create output filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = self.markdown_dir / f"tickets_part{chunk_num + 1}_{timestamp}.md"
+            output_path = self.markdown_dir / f"jira_issues_part{chunk_num + 1}_{timestamp}.md"
             
             # Write to file
-            output_path.write_text('\n'.join(markdown_content), encoding='utf-8')
+            output_path.write_text(''.join(markdown_content), encoding='utf-8')
             markdown_files.append(str(output_path))
             
         return markdown_files

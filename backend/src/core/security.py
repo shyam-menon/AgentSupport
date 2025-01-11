@@ -3,6 +3,7 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from src.core.config import settings
+import logging
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -31,7 +32,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def verify_token(token: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload
-    except JWTError:
+        logging.info("Verifying JWT token")
+        decoded_token = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        logging.info(f"Decoded token payload: {decoded_token}")
+        return decoded_token
+    except JWTError as e:
+        logging.error(f"JWT verification failed: {str(e)}")
         return None

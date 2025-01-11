@@ -25,12 +25,20 @@ class APIClient:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
+    def _get_multipart_headers(self):
+        """Get headers for multipart form data (file uploads) with authentication token if available"""
+        headers = {}  # Don't set Content-Type, let requests set it with boundary
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        return headers
+
     def login(self, username: str, password: str) -> dict:
         """
         Authenticate user and store token
         Returns the response data if successful, None if failed
         """
         try:
+            logging.info(f"Attempting login for user: {username}")
             # Use form data instead of JSON for OAuth2 password flow
             data = {
                 "username": username,
@@ -45,16 +53,17 @@ class APIClient:
             )
             
             if response.status_code == 401:
-                logging.error("Authentication failed - invalid credentials")
+                logging.error(f"Authentication failed for user {username} - invalid credentials")
                 return None
                 
             response.raise_for_status()
             data = response.json()
-            self.token = data["access_token"]
+            self.token = data.get("access_token")
+            logging.info(f"Login successful for user: {username}")
+            logging.debug(f"Token received: {self.token[:10]}...")  # Log first 10 chars of token
             return data
-            
         except Exception as e:
-            logging.error(f"Login error: {str(e)}")
+            logging.error(f"Login failed for user {username}: {str(e)}")
             return None
 
     def search_tickets(self, query: Dict) -> List[Dict]:
@@ -80,19 +89,42 @@ class APIClient:
         Returns: Dict containing processing results
         """
         try:
+            if not self.token:
+                logging.error("Upload failed: No authentication token")
+                return None
+                
+            logging.info(f"Uploading file: {getattr(file, 'name', 'unknown')}")
+            logging.debug(f"Using token: {self.token[:10]}...")  # Log first 10 chars of token
+            
             files = {"file": file}
+            headers = self._get_multipart_headers()
+            logging.debug(f"Request headers: {headers}")
+            
             response = requests.post(
                 f"{self.base_url}/admin/upload",
                 files=files,
-                headers=self._get_headers()
+                headers=headers
             )
+            
+            logging.info(f"Upload response status: {response.status_code}")
+            if response.status_code != 200:
+                logging.error(f"Upload failed with status {response.status_code}")
+                logging.error(f"Response content: {response.text}")
+            
             if response.status_code == 401:
                 logging.error("Unauthorized - token may have expired")
                 return None
+            elif response.status_code == 403:
+                logging.error("Forbidden - user may not have admin privileges")
+                logging.error(f"Response details: {response.text}")
+                return None
+                
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            logging.info(f"Upload successful: {result}")
+            return result
         except Exception as e:
-            logging.error(f"Failed to upload data: {str(e)}")
+            logging.error(f"Failed to upload data: {str(e)}", exc_info=True)
             return None
 
     def get_system_stats(self) -> Dict:
