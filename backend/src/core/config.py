@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     AZURE_OPENAI_API_VERSION: str
     
     # Database
-    CHROMA_PERSIST_DIRECTORY: str = "./data/chroma"
-    SQLITE_DATABASE_URL: str = "sqlite:///./data/app.db"
+    CHROMA_PERSIST_DIRECTORY: str = "c:/Code/Work/AgentSupport/backend/data/chroma"
+    SQLITE_DATABASE_URL: str = "sqlite:///c:/Code/Work/AgentSupport/backend/data/app.db"
     
     class Config:
         case_sensitive = True

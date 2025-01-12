@@ -39,78 +39,81 @@ class SearchPanel:
 
     def render(self):
         """Renders the search interface with filters and input fields"""
-        # Issue description
-        description = st.text_area("Issue Description", 
-                                 help="Enter a detailed description of the issue")
+        # Toggle between form and chat interface
+        interface_type = st.radio("Search Interface", ["Form", "Chat"], horizontal=True)
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Issue type dropdown
-            issue_type = st.selectbox("Issue Type",
-                                    [""] + list(self.issue_types.values()),
-                                    help="Select the type of issue")
-        
-        with col2:
-            # Affected system dropdown
-            affected_system = st.selectbox("Affected System",
-                                         [""] + list(self.systems.values()),
-                                         help="Select the affected system")
-        
-        # Additional details (optional)
-        with st.expander("Additional Options"):
-            additional_details = st.text_input("Additional Details",
-                                             help="Any additional context about the issue")
-            num_results = st.slider("Number of similar tickets to display",
-                                  min_value=1, max_value=10, value=5)
-        
-        # Generate and show query preview
-        if description:
-            query = self.generate_query({
-                "title": description,
-                "type": "Customer Support",
-                "system": affected_system if affected_system else None,
-                "issue_type": issue_type if issue_type else None,
-                "details": additional_details
-            })
+        if interface_type == "Chat":
+            # Chat interface
+            chat_input = st.text_area("Chat with Support Assistant",
+                                    help="Describe your issue in natural language")
             
-            with st.expander("Preview Generated Query", expanded=True):
-                st.markdown("=== Generated Query ===")
-                st.markdown(query)
+            if chat_input:
+                query = self.generate_chat_query(chat_input)
+                if st.button("Search", type="primary"):
+                    results = self.handle_search({
+                        "description": chat_input,
+                        "num_results": 5
+                    })
+                    self.results_display.render_results(results)
+        else:
+            # Form interface
+            description = st.text_area("Issue Description", 
+                                     help="Enter a detailed description of the issue")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                issue_type = st.selectbox("Issue Type",
+                                        [""] + list(self.issue_types.values()),
+                                        help="Select the type of issue")
+            
+            with col2:
+                affected_system = st.selectbox("Affected System",
+                                             [""] + list(self.systems.values()),
+                                             help="Select the affected system")
+            
+            # Additional details (optional)
+            with st.expander("Additional Options"):
+                additional_details = st.text_input("Additional Details",
+                                                 help="Any additional context about the issue")
+                num_results = st.slider("Number of similar tickets to display",
+                                      min_value=1, max_value=10, value=5)
+            
+            # Generate and show query preview
+            if description:
+                query = self.generate_query({
+                    "title": description,
+                    "type": "Customer Support",
+                    "system": affected_system if affected_system else None,
+                    "issue_type": issue_type if issue_type else None,
+                    "details": additional_details
+                })
                 
-                # Allow query editing
-                edited_query = st.text_area("Edit Query if needed:", 
-                                          value=query,
-                                          height=200)
-        
-        # Search button
-        if st.button("Search", type="primary"):
-            if not description:
-                st.error("Please enter an issue description")
-                return
+                with st.expander("Preview Generated Query", expanded=False):
+                    st.markdown("=== Generated Query ===")
+                    st.markdown(query)
+                    
+                    # Edit query button
+                    if st.button("Edit Query"):
+                        edited_query = st.text_area("Edit Query:",
+                                                  value=query,
+                                                  height=200)
+                        query = edited_query
             
-            # Use edited query if available
-            final_query = edited_query if 'edited_query' in locals() else self.generate_query({
-                "title": description,
-                "type": "Customer Support",
-                "system": affected_system if affected_system else None,
-                "issue_type": issue_type if issue_type else None,
-                "details": additional_details
-            })
-            
-            results = self.handle_search({
-                "description": description,
-                "issue_type": issue_type if issue_type else None,
-                "affected_system": affected_system if affected_system else None,
-                "additional_details": additional_details,
-                "num_results": num_results,
-                "query": final_query
-            })
-            
-            if results:
+            # Search button
+            if st.button("Search", type="primary"):
+                if not description:
+                    st.error("Please enter an issue description")
+                    return
+                
+                results = self.handle_search({
+                    "description": description,
+                    "issue_type": issue_type if issue_type else None,
+                    "affected_system": affected_system if affected_system else None,
+                    "additional_details": additional_details,
+                    "num_results": num_results
+                })
                 self.results_display.render_results(results)
-        
-        return None
 
     def generate_query(self, context: Dict[str, str]) -> str:
         """Generate a structured query for the RAG system"""
@@ -141,12 +144,35 @@ class SearchPanel:
         
         return query
 
+    def generate_chat_query(self, chat_input: str) -> str:
+        """Generates a structured query from natural language chat input"""
+        # Extract key information from chat input
+        query = f"""Find similar support tickets and their resolutions for:
+
+{chat_input}
+
+Based on this information:
+1. Provide resolution steps from similar cases
+2. List relevant MSSI ticket numbers and their resolutions
+3. Identify common solutions for this type of issue"""
+        
+        return query
+
     def handle_search(self, query: Dict) -> List[Dict]:
         """Processes search request and returns results"""
         with st.spinner("Searching..."):
             try:
-                results = self.api_client.search_tickets(query)
+                # Format query to match backend schema
+                search_params = {
+                    "description": query.get("description", ""),  # Use query text as description
+                    "issue_type": query.get("issue_type"),
+                    "affected_system": query.get("affected_system"),
+                    "additional_details": query.get("additional_details"),
+                    "num_results": query.get("num_results", 5)
+                }
+                
+                results = self.api_client.search_tickets(search_params)
                 return results
             except Exception as e:
-                st.error("An error occurred while searching. Please try again.")
-                return None
+                st.error(f"Error performing search: {str(e)}")
+                return []
