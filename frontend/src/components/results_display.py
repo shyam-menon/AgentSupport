@@ -39,9 +39,15 @@ class ResultsDisplay:
         with tabs[1]:
             st.write("### Similar Cases")
             for ticket in results:
-                with st.expander(f"{ticket.get('title', 'Untitled Case')} ({ticket.get('id', 'No ID')})"):
+                # Format ticket ID for better visibility
+                ticket_id = ticket.get('id', 'No ID')
+                title = ticket.get('title', 'Untitled Case')
+                
+                # Create expander with ticket ID prominently displayed
+                with st.expander(f"JIRA-{ticket_id}: {title}"):
                     cols = st.columns([2, 1])
                     with cols[0]:
+                        st.markdown(f"**Issue Key:** {ticket_id}")
                         st.markdown(f"**Status:** {ticket.get('status', 'Unknown')}")
                         st.markdown(f"**Type:** {ticket.get('type', 'Not specified')}")
                         if ticket.get('description'):
