@@ -178,37 +178,61 @@ class VectorStore:
         Search for similar vectors
         """
         try:
+            # Log collection info
+            collection_info = self.collection.get()
+            logging.info(f"Collection info - count: {self.collection.count()}, name: {self.collection.name}")
+            
             # Prepare filter
-            where_clause = {}
+            where_clause = None
             if filter_criteria:
+                # Build a list of valid conditions
+                conditions = []
                 for key, value in filter_criteria.items():
                     if value:
-                        where_clause[key] = value
+                        conditions.append({key: {"$eq": value}})
+                
+                # Combine conditions if we have any
+                if conditions:
+                    if len(conditions) == 1:
+                        where_clause = conditions[0]
+                    else:
+                        where_clause = {"$and": conditions}
+
+            # Log the query for debugging
+            logging.info(f"Searching with where clause: {where_clause}")
+            logging.info(f"Query embedding shape: {query_embedding.shape}")
+
+            # Convert numpy array to list for ChromaDB
+            embedding_list = query_embedding.tolist()
 
             # Perform search
             results = self.collection.query(
-                query_embeddings=[query_embedding],
-                where=where_clause if where_clause else None,
+                query_embeddings=[embedding_list],  # Pass as list of lists
+                where=where_clause,
                 n_results=limit
             )
+            
+            logging.info(f"Raw search results: {results}")
 
             # Process results
             processed_results = []
-            for i in range(len(results["ids"][0])):
-                metadata = results["metadatas"][0][i]
-                processed_results.append({
-                    "id": int(metadata["id"]),
-                    "title": metadata.get("title"),
-                    "description": results["documents"][0][i],
-                    "issue_type": metadata.get("issue_type"),
-                    "affected_system": metadata.get("affected_system"),
-                    "status": metadata.get("status"),
-                    "resolution": metadata.get("resolution"),
-                    "steps": metadata.get("steps", "").split("|") if metadata.get("steps") else [],
-                    "created_at": datetime.fromisoformat(metadata.get("created_at")),
-                    "updated_at": datetime.fromisoformat(metadata.get("updated_at"))
-                })
+            if results["ids"] and results["ids"][0]:  # Check if we have any results
+                for i in range(len(results["ids"][0])):
+                    metadata = results["metadatas"][0][i]
+                    processed_results.append({
+                        "id": int(metadata["id"]),
+                        "title": metadata.get("title"),
+                        "description": results["documents"][0][i],
+                        "issue_type": metadata.get("issue_type"),
+                        "affected_system": metadata.get("affected_system"),
+                        "status": metadata.get("status"),
+                        "resolution": metadata.get("resolution"),
+                        "steps": metadata.get("steps", "").split("|") if metadata.get("steps") else [],
+                        "created_at": datetime.fromisoformat(metadata.get("created_at")),
+                        "updated_at": datetime.fromisoformat(metadata.get("updated_at"))
+                    })
 
+            logging.info(f"Processed {len(processed_results)} results")
             return processed_results
 
         except Exception as e:

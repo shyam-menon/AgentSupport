@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 import logging
 import streamlit as st
+import json
 
 load_dotenv()
 
@@ -86,7 +87,30 @@ class APIClient:
                 logging.error("Unauthorized - token may have expired")
                 return []
             response.raise_for_status()
-            return response.json()
+            # Convert response to list of dictionaries
+            results = response.json()
+            if not isinstance(results, list):
+                logging.error(f"Unexpected response format: {results}")
+                return []
+            
+            # Convert each ticket to a dictionary with proper keys
+            tickets = []
+            for ticket in results:
+                # Handle both dictionary and raw JSON responses
+                if isinstance(ticket, str):
+                    ticket = json.loads(ticket)
+                tickets.append({
+                    'id': ticket.get('id'),
+                    'title': ticket.get('title', 'No Title'),
+                    'description': ticket.get('description', ''),
+                    'status': ticket.get('status', 'Unknown'),
+                    'created_at': ticket.get('created_at'),
+                    'resolution': ticket.get('resolution', 'No resolution available'),
+                    'steps': ticket.get('steps', []),
+                    'issue_type': ticket.get('issue_type'),
+                    'affected_system': ticket.get('affected_system')
+                })
+            return tickets
         except Exception as e:
             logging.error(f"Failed to search tickets: {str(e)}")
             raise Exception(f"Failed to search tickets: {str(e)}")
