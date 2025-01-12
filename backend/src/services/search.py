@@ -12,9 +12,9 @@ class SearchService:
         self.vector_store = VectorStore()
         self.embedding_service = EmbeddingService()
         self.chat_client = AzureOpenAI(
-            api_key="cc1f5e10eee54bd7b7a35d4bc8d412ee",
-            api_version="2023-05-15",
-            azure_endpoint="https://davinci-dev-openai-api.corp.hpicloud.net/salesly",
+            api_key=settings.AZURE_OPENAI_API_KEY,
+            api_version=settings.AZURE_OPENAI_API_VERSION,
+            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
             http_client=httpx.Client(verify=False)  # Skip SSL verification for internal endpoints
         )
 
