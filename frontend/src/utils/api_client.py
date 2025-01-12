@@ -41,6 +41,37 @@ class APIClient:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
+    def _handle_unauthorized(self):
+        """Handle 401 Unauthorized response by clearing session state"""
+        logging.warning("Token expired - starting unauthorized handler")
+        
+        # Log current session state
+        auth_keys = ["access_token", "user_info", "user"]
+        logging.info(f"Current session state keys: {[k for k in st.session_state.keys()]}")
+        logging.info(f"Auth-related keys present: {[k for k in auth_keys if k in st.session_state]}")
+        
+        # Clear token and user info from session
+        for key in auth_keys:
+            if key in st.session_state:
+                logging.info(f"Removing {key} from session state")
+                del st.session_state[key]
+            else:
+                logging.info(f"Key {key} not found in session state")
+        
+        # Clear API client token
+        logging.info(f"Clearing API client token. Current token: {self.token[:10] if self.token else None}")
+        self.token = None
+        
+        # Force page refresh by clearing current page
+        if "current_page" in st.session_state:
+            del st.session_state["current_page"]
+            
+        # Clear URL params to prevent auto-login attempts
+        st.query_params.clear()
+        
+        # Log final state
+        logging.info(f"Final session state keys: {[k for k in st.session_state.keys()]}")
+
     def login(self, username: str, password: str) -> dict:
         """
         Authenticate user and store token
@@ -85,6 +116,7 @@ class APIClient:
             )
             if response.status_code == 401:
                 logging.error("Unauthorized - token may have expired")
+                self._handle_unauthorized()
                 return []
             response.raise_for_status()
             # Convert response to list of dictionaries
@@ -145,6 +177,7 @@ class APIClient:
             
             if response.status_code == 401:
                 logging.error("Unauthorized - token may have expired")
+                self._handle_unauthorized()
                 return None
             elif response.status_code == 403:
                 logging.error("Forbidden - user may not have admin privileges")
@@ -168,6 +201,7 @@ class APIClient:
             )
             if response.status_code == 401:
                 logging.error("Unauthorized - token may have expired")
+                self._handle_unauthorized()
                 return None
             response.raise_for_status()
             return response.json()

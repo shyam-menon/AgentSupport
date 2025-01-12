@@ -179,6 +179,7 @@ cd frontend
 # Your prompt should now show (venv) indicating the environment is active
 # Run the frontend application
 streamlit run run_app.py
+streamlit run run_app.py --logger.level=info
 ```
 
 To deactivate the virtual environment when you're done:
