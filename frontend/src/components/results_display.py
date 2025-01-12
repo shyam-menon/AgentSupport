@@ -9,27 +9,51 @@ class ResultsDisplay:
             st.info("No results found")
             return
 
-        st.subheader("Search Results")
-
-        # Display aggregated resolution steps
+        # Display resolution steps from similar cases
+        st.write("### 1. Resolution Steps from Similar Cases:")
         if "aggregated_steps" in results[0]:
-            st.write("### Recommended Resolution Steps")
-            for idx, step in enumerate(results[0]["aggregated_steps"], 1):
-                st.write(f"{idx}. {step}")
-
-        # Display individual tickets
-        st.write("### Similar Tickets")
+            for step in results[0]["aggregated_steps"]:
+                st.markdown(f"- {step}")
+        
+        # Display relevant MSSI ticket numbers
+        st.write("\n### 2. Relevant MSSI Ticket Numbers:")
         for ticket in results:
-            with st.expander(f"Ticket #{ticket['id']} - {ticket['title']}"):
-                st.write(f"**Status:** {ticket['status']}")
-                st.write(f"**Created:** {ticket['created_at']}")
-                if ticket.get('source_file'):
-                    st.write(f"**Source:** {ticket['source_file']}")
-                st.write(f"**Resolution:** {ticket['resolution']}")
-                if ticket.get('steps'):
-                    st.write("**Steps taken:**")
-                    for step in ticket['steps']:
-                        st.write(f"- {step}")
+            if 'id' in ticket:
+                st.markdown(f"- {ticket['id']}: {ticket.get('title', '')}")
+
+        # Display common solutions
+        st.write("\n### 3. Common Solutions for this Type of Issue:")
+        common_solutions = [
+            "Confirm the SKU entry in the system database",
+            "Check for recent changes in SKU availability",
+            "Verify contract status and renewal dates",
+            "Review data synchronization status"
+        ]
+        for solution in common_solutions:
+            st.markdown(f"- {solution}")
+
+        # Display troubleshooting steps
+        st.write("\n### 4. Suggested Troubleshooting Steps:")
+        troubleshooting_steps = [
+            "Verify SKU format and validity",
+            "Check system logs for any error messages",
+            "Confirm data synchronization is working",
+            "Review recent system changes or updates"
+        ]
+        for step in troubleshooting_steps:
+            st.markdown(f"- {step}")
+
+        # Sources section
+        st.write("\n### Sources:")
+        for ticket in results:
+            if all(key in ticket for key in ['id', 'title', 'status', 'created_at']):
+                # Format the date to be more compact
+                created_date = ticket['created_at'].split()[0] if ticket['created_at'] else 'N/A'
+                
+                # Create a more compact source reference
+                source_text = (f"JIRA-{ticket['id']}: {ticket['title']} "
+                             f"[{ticket.get('type', '')} | {ticket.get('priority', '')} | {ticket['status']} | {created_date}]")
+                st.markdown(source_text, help="Click for more details")
 
         # Export button
         if st.button("Export Results"):

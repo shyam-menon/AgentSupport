@@ -39,44 +39,33 @@ class SearchPanel:
 
     def render(self):
         """Renders the search interface with filters and input fields"""
-        st.subheader("Search Support Tickets")
-        
         # Issue description
         description = st.text_area("Issue Description", 
                                  help="Enter a detailed description of the issue")
         
-        # Issue type dropdown
-        issue_type = st.selectbox("Issue Type",
-                                [""] + list(self.issue_types.values()),
-                                help="Select the type of issue")
+        col1, col2 = st.columns(2)
         
-        # Affected system dropdown
-        affected_system = st.selectbox("Affected System",
-                                     [""] + list(self.systems.values()),
-                                     help="Select the affected system")
+        with col1:
+            # Issue type dropdown
+            issue_type = st.selectbox("Issue Type",
+                                    [""] + list(self.issue_types.values()),
+                                    help="Select the type of issue")
         
-        # Additional details
-        additional_details = st.text_input("Additional Details",
-                                         help="Any additional context about the issue")
+        with col2:
+            # Affected system dropdown
+            affected_system = st.selectbox("Affected System",
+                                         [""] + list(self.systems.values()),
+                                         help="Select the affected system")
         
-        # Number of results slider
-        num_results = st.slider("Number of similar tickets to display",
-                              min_value=1, max_value=10, value=5)
-
-        # Preview query section
-        if description or issue_type or affected_system or additional_details:
-            st.subheader("Preview Query")
-            query = self.generate_query({
-                "title": description,
-                "type": "Customer Support",
-                "system": affected_system if affected_system else None,
-                "issue_type": issue_type if issue_type else None,
-                "details": additional_details
-            })
-            st.code(query, language="text")
+        # Additional details (optional)
+        with st.expander("Additional Options"):
+            additional_details = st.text_input("Additional Details",
+                                             help="Any additional context about the issue")
+            num_results = st.slider("Number of similar tickets to display",
+                                  min_value=1, max_value=10, value=5)
         
         # Search button
-        if st.button("Search"):
+        if st.button("Search", type="primary"):
             if not description:
                 st.error("Please enter an issue description")
                 return
@@ -133,15 +122,10 @@ class SearchPanel:
 
     def handle_search(self, query: Dict) -> List[Dict]:
         """Processes search request and returns results"""
-        with st.spinner("Searching for similar tickets..."):
+        with st.spinner("Searching..."):
             try:
-                st.write("Sending search request...")  # Debug
                 results = self.api_client.search_tickets(query)
-                st.write(f"Got results: {results}")  # Debug
-                if results:
-                    st.write(f"Number of results: {len(results)}")  # Debug
-                    st.write(f"First result: {results[0]}")  # Debug
                 return results
             except Exception as e:
-                st.error(f"Error performing search: {str(e)}")
+                st.error("An error occurred while searching. Please try again.")
                 return None
