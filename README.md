@@ -229,3 +229,22 @@ AgentSupport/
 - Use `--log-level debug` with uvicorn to see detailed backend logs
 - Use `--logger.level=debug` with streamlit to see detailed frontend logs
 - Check that all required Python packages are installed in both environments
+
+## Markdown File Management
+
+### Automatic Markdown Cleanup
+The system includes a utility script to manage markdown files generated during CSV uploads. This helps prevent excessive disk usage and maintains system performance.
+
+Location: [backend/src/utils/markdown_cleanup.py](cci:7://file:///c:/Code/Work/AgentSupport/backend/src/utils/markdown_cleanup.py:0:0-0:0)
+
+#### Features
+- Age-based cleanup: Removes files older than 7 days
+- Count-based cleanup: Maintains only the newest 1000 files
+- Empty directory cleanup: Removes empty subdirectories
+- Detailed logging of all cleanup operations
+
+#### Usage
+
+1. **Manual Cleanup**
+   ```bash
+   python backend/src/utils/markdown_cleanup.py
