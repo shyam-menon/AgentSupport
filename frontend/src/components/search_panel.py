@@ -64,11 +64,39 @@ class SearchPanel:
             num_results = st.slider("Number of similar tickets to display",
                                   min_value=1, max_value=10, value=5)
         
+        # Generate and show query preview
+        if description:
+            query = self.generate_query({
+                "title": description,
+                "type": "Customer Support",
+                "system": affected_system if affected_system else None,
+                "issue_type": issue_type if issue_type else None,
+                "details": additional_details
+            })
+            
+            with st.expander("Preview Generated Query", expanded=True):
+                st.markdown("=== Generated Query ===")
+                st.markdown(query)
+                
+                # Allow query editing
+                edited_query = st.text_area("Edit Query if needed:", 
+                                          value=query,
+                                          height=200)
+        
         # Search button
         if st.button("Search", type="primary"):
             if not description:
                 st.error("Please enter an issue description")
                 return
+            
+            # Use edited query if available
+            final_query = edited_query if 'edited_query' in locals() else self.generate_query({
+                "title": description,
+                "type": "Customer Support",
+                "system": affected_system if affected_system else None,
+                "issue_type": issue_type if issue_type else None,
+                "details": additional_details
+            })
             
             results = self.handle_search({
                 "description": description,
@@ -76,13 +104,7 @@ class SearchPanel:
                 "affected_system": affected_system if affected_system else None,
                 "additional_details": additional_details,
                 "num_results": num_results,
-                "query": self.generate_query({
-                    "title": description,
-                    "type": "Customer Support",
-                    "system": affected_system if affected_system else None,
-                    "issue_type": issue_type if issue_type else None,
-                    "details": additional_details
-                })
+                "query": final_query
             })
             
             if results:
@@ -93,30 +115,29 @@ class SearchPanel:
     def generate_query(self, context: Dict[str, str]) -> str:
         """Generate a structured query for the RAG system"""
         # Format the query to match the ticket structure
-        query = (
-            f"Find similar support tickets and their resolutions for:\n\n"
-            f"{context['title']} "
-            f"**Type:** {context['type']}"
-        )
-
+        query = "Find similar support tickets and their resolutions for:\n\n"
+        
+        # Add title and type
+        query += f"{context['title']} **Type:** {context['type']}"
+        
         # Add system if provided
         if context['system']:
             query += f" | **System:** {context['system']}"
-
+            
         # Add issue type if provided
         if context['issue_type']:
             query += f" | **Issue Type:** {context['issue_type']}"
-
+            
         # Add details if provided
         if context['details']:
-            query += f" | **Details:** {context['details']}"
-
-        # Add request for similar tickets and their numbers
-        query += "\n\nBased on this information:\n"
-        query += "1. Provide resolution steps from similar cases\n"
-        query += "2. List relevant MSSI ticket numbers and their resolutions\n"
-        query += "3. Identify common solutions for this type of issue\n"
-        query += "4. Suggest troubleshooting steps based on historical tickets"
+            query += f"\n\nAdditional Details: {context['details']}"
+        
+        # Add standard request format
+        query += "\n\nBased on this information:"
+        query += "\n1. Provide resolution steps from similar cases"
+        query += "\n2. List relevant MSSI ticket numbers and their resolutions"
+        query += "\n3. Identify common solutions for this type of issue"
+        query += "\n4. Suggest troubleshooting steps based on historical tickets"
         
         return query
 
