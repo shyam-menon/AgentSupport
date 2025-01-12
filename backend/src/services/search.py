@@ -29,39 +29,49 @@ class SearchService:
         """
         Search for similar tickets using vector similarity
         """
-        # Get store stats for debugging
-        stats = self.vector_store.get_stats()
-        logging.info(f"Vector store stats: {stats}")
-        
-        # Generate embedding for the query
-        query_embedding = await self.embedding_service.generate_embedding(description)
-        logging.info(f"Generated embedding shape: {query_embedding.shape}")
-        
-        # Search in vector store
-        logging.info(f"Searching with criteria - issue_type: {issue_type}, affected_system: {affected_system}, limit: {limit}")
-        results = await self.vector_store.search(
-            query_embedding,
-            filter_criteria={
-                "issue_type": issue_type,
-                "affected_system": affected_system
-            },
-            limit=limit
-        )
-        logging.info(f"Search returned {len(results)} results")
-        
-        # Process results and get AI-generated response
-        processed_tickets = await self.process_results(results)
-        logging.info(f"Processed {len(processed_tickets)} tickets")
-        
-        # Generate AI response if we have results
-        if processed_tickets:
-            ai_response = await self.generate_ai_response(description, processed_tickets)
-            # Add AI response to the first ticket
-            if processed_tickets[0]:
-                processed_tickets[0].resolution = ai_response
-                logging.info("Added AI response to first ticket")
-        
-        return processed_tickets
+        try:
+            logging.info(f"Starting search with description: '{description[:100]}...'")
+            logging.info(f"Search criteria - Issue Type: {issue_type}, Affected System: {affected_system}, Limit: {limit}")
+            
+            # Get store stats for debugging
+            stats = self.vector_store.get_stats()
+            logging.info(f"Vector store stats - Total Records: {stats.get('total_records')}, Embedding Count: {stats.get('embedding_count')}")
+            
+            # Generate embedding for the query
+            query_embedding = await self.embedding_service.generate_embedding(description)
+            logging.info(f"Generated query embedding with shape: {query_embedding.shape}")
+            
+            # Search in vector store
+            results = await self.vector_store.search(
+                query_embedding,
+                filter_criteria={
+                    "issue_type": issue_type,
+                    "affected_system": affected_system
+                },
+                limit=limit
+            )
+            logging.info(f"Vector store returned {len(results)} results")
+            
+            # Process results and get AI-generated response
+            processed_tickets = await self.process_results(results)
+            logging.info(f"Processed {len(processed_tickets)} tickets")
+            
+            # Generate AI response if we have results
+            if processed_tickets:
+                logging.info("Generating AI response based on similar tickets...")
+                ai_response = await self.generate_ai_response(description, processed_tickets)
+                # Add AI response to the first ticket
+                if processed_tickets[0]:
+                    processed_tickets[0].resolution = ai_response
+                    logging.info("Added AI-generated response to first ticket")
+            else:
+                logging.warning("No tickets found to generate AI response")
+            
+            return processed_tickets
+            
+        except Exception as e:
+            logging.error(f"Error in search_similar_tickets: {str(e)}")
+            raise
 
     async def process_results(self, results: List[dict]) -> List[Ticket]:
         """

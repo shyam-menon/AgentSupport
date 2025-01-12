@@ -6,6 +6,29 @@ from datetime import datetime
 import logging
 import os
 import json
+from src.services.embedding import EmbeddingService
+
+class AzureOpenAIEmbeddingFunction:
+    def __init__(self):
+        self.embedding_service = EmbeddingService()
+        
+    def __call__(self, input: List[str]) -> List[List[float]]:
+        """
+        Generate embeddings for input texts
+        Args:
+            input: List of texts to generate embeddings for
+        Returns:
+            List of embeddings as float lists
+        """
+        if isinstance(input, str):
+            input = [input]
+        
+        try:
+            embeddings = self.embedding_service.batch_generate_embeddings_sync(input)
+            return [e.tolist() for e in embeddings]
+        except Exception as e:
+            logging.error(f"Error generating embeddings: {e}")
+            raise
 
 class VectorStore:
     def __init__(self):
@@ -16,6 +39,10 @@ class VectorStore:
             os.makedirs(chroma_dir, exist_ok=True)
         
         logging.info(f"Initializing ChromaDB with persist directory: {chroma_dir}")
+        
+        # Initialize embedding service
+        self.embedding_service = EmbeddingService()
+        
         self.client = chromadb.Client(chromadb.Settings(
             persist_directory=chroma_dir,
             anonymized_telemetry=False
@@ -23,7 +50,8 @@ class VectorStore:
         
         self.collection = self.client.get_or_create_collection(
             name="support_tickets",
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine", "dimension": 1536},  # Azure OpenAI dimension
+            embedding_function=AzureOpenAIEmbeddingFunction()
         )
         logging.info(f"Connected to ChromaDB collection: {self.collection.name}")
         
@@ -130,8 +158,10 @@ class VectorStore:
         PersistentClient automatically persists changes, no need to call persist() explicitly.
         """
         try:
-            # Log the records for debugging
-            logging.info(f"Adding records: {records}")
+            # Log the number of records and first record as sample
+            logging.info(f"Adding {len(records)} records to vector store")
+            if records:
+                logging.info(f"Sample record metadata: {records[0]['metadata']}")
             
             # Extract text and metadata
             texts = []
@@ -152,7 +182,13 @@ class VectorStore:
                 # Add to lists
                 texts.append(content)
                 metadatas.append(metadata)
-                ids.append(self._generate_id(i))
+                record_id = self._generate_id(i)
+                ids.append(record_id)
+                logging.debug(f"Prepared record {i+1}/{len(records)} with ID: {record_id}")
+            
+            # Log collection state before adding
+            before_count = self.collection.count()
+            logging.info(f"Collection count before adding: {before_count}")
             
             # Add to collection - ChromaDB will generate embeddings automatically
             self.collection.add(
@@ -161,8 +197,14 @@ class VectorStore:
                 ids=ids
             )
             
+            # Verify records were added
+            after_count = self.collection.count()
+            added_count = after_count - before_count
+            logging.info(f"Added {added_count} records. Collection count: {after_count}")
+            
             # Update stats
-            self._update_stats()
+            stats = self._update_stats()
+            logging.info(f"Updated vector store stats: {stats}")
             
         except Exception as e:
             logging.error(f"Error adding records: {e}")
@@ -229,7 +271,8 @@ class VectorStore:
                         "resolution": metadata.get("resolution"),
                         "steps": metadata.get("steps", "").split("|") if metadata.get("steps") else [],
                         "created_at": datetime.fromisoformat(metadata.get("created_at")),
-                        "updated_at": datetime.fromisoformat(metadata.get("updated_at"))
+                        "updated_at": datetime.fromisoformat(metadata.get("updated_at")),
+                        "source_file": metadata.get("markdown_file")  # Include markdown file reference
                     })
 
             logging.info(f"Processed {len(processed_results)} results")

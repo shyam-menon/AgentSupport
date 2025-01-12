@@ -15,9 +15,9 @@ class EmbeddingService:
             http_client=httpx.Client(verify=False)  # Skip SSL verification for internal endpoints
         )
 
-    async def generate_embedding(self, text: str) -> np.ndarray:
+    def generate_embedding_sync(self, text: str) -> np.ndarray:
         """
-        Generate embeddings for a single text using Azure OpenAI
+        Generate embeddings for a single text using Azure OpenAI (synchronous version)
         """
         try:
             # Disable SSL verification warnings since we're using an internal endpoint
@@ -31,9 +31,9 @@ class EmbeddingService:
         except Exception as e:
             raise Exception(f"Error generating embedding: {str(e)}")
 
-    async def batch_generate_embeddings(self, texts: List[str], batch_size: int = 50) -> List[np.ndarray]:
+    def batch_generate_embeddings_sync(self, texts: List[str], batch_size: int = 50) -> List[np.ndarray]:
         """
-        Generate embeddings for multiple texts in batches
+        Generate embeddings for multiple texts in batches (synchronous version)
         """
         embeddings = []
         for i in range(0, len(texts), batch_size):
@@ -48,3 +48,10 @@ class EmbeddingService:
             except Exception as e:
                 raise Exception(f"Error generating batch embeddings: {str(e)}")
         return embeddings
+
+    # Keep the async versions for other parts of the application
+    async def generate_embedding(self, text: str) -> np.ndarray:
+        return self.generate_embedding_sync(text)
+
+    async def batch_generate_embeddings(self, texts: List[str], batch_size: int = 50) -> List[np.ndarray]:
+        return self.batch_generate_embeddings_sync(texts, batch_size)

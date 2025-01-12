@@ -23,6 +23,8 @@ class ResultsDisplay:
             with st.expander(f"Ticket #{ticket['id']} - {ticket['title']}"):
                 st.write(f"**Status:** {ticket['status']}")
                 st.write(f"**Created:** {ticket['created_at']}")
+                if ticket.get('source_file'):
+                    st.write(f"**Source:** {ticket['source_file']}")
                 st.write(f"**Resolution:** {ticket['resolution']}")
                 if ticket.get('steps'):
                     st.write("**Steps taken:**")

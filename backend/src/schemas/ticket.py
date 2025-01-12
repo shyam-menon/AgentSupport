@@ -22,6 +22,7 @@ class TicketInDBBase(TicketBase):
     updated_at: datetime
     resolution: Optional[str] = None
     steps: Optional[List[str]] = None
+    source_file: Optional[str] = None  # Reference to the markdown file
 
     class Config:
         from_attributes = True
