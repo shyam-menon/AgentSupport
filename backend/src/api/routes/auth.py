@@ -50,8 +50,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user_data = {
         "email": user.email,
         "is_active": user.is_active,
-        "is_admin": True if getattr(user, 'is_admin', False) else False,
-        "is_superuser": True if getattr(user, 'is_superuser', False) else False,
+        "is_admin": user.is_admin,
         "full_name": user.full_name
     }
     

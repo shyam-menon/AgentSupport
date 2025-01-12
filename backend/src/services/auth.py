@@ -49,17 +49,10 @@ def authenticate_user(email: str, password: str) -> Optional[User]:
         return None
         
     # Create User object from UserInDB
-    logging.info(f"Creating User object from UserInDB: {user}")
-    logging.info(f"UserInDB fields: is_admin={user.is_admin}, is_superuser={user.is_superuser}")
-    
-    user_dict = {
+    user_data = {
         "email": user.email,
         "is_active": user.is_active,
-        "is_admin": True if user.is_superuser else user.is_admin,  # Set admin if superuser
+        "is_admin": user.is_admin,
         "full_name": user.full_name
     }
-    logging.info(f"Creating User object with data: {user_dict}")
-    user_obj = User(**user_dict)
-    logging.info(f"Created User object: {user_obj}")
-    logging.info(f"Final user admin status: {user_obj.is_admin}")
-    return user_obj
+    return User(**user_data)

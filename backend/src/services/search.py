@@ -52,9 +52,9 @@ class SearchService:
             
             # Add filters only if they are provided and not empty
             if issue_type and issue_type.strip():
-                filter_criteria["Issue Type"] = issue_type
+                filter_criteria["issue_type"] = issue_type
             if affected_system and affected_system.strip():
-                filter_criteria["Affected System"] = affected_system
+                filter_criteria["affected_system"] = affected_system
             
             results = await self.vector_store.search(
                 query_embedding,
@@ -66,8 +66,8 @@ class SearchService:
             for i, result in enumerate(results):
                 logging.info(f"\nResult {i+1}:")
                 logging.info(f"ID: {result.get('id')}")
-                logging.info(f"Issue Type: {result.get('Issue Type')}")
-                logging.info(f"Affected System: {result.get('Affected System')}")
+                logging.info(f"Issue Type: {result.get('issue_type')}")
+                logging.info(f"Affected System: {result.get('affected_system')}")
                 logging.info(f"Description Preview: {result.get('description')[:200]}...")
             
             # Process results and get AI-generated response
@@ -102,13 +102,13 @@ class SearchService:
             ticket = Ticket(
                 id=result["id"],
                 title=result["title"],
-                description=result["description"],
-                issue_type=result.get("Issue Type"),
-                affected_system=result.get("Affected System"),
-                status=result["status"],
-                created_at=result["created_at"],
-                updated_at=result["updated_at"],
-                resolution=result.get("resolution"),
+                description=result.get("description", ""),
+                issue_type=result.get("issue_type", ""),
+                affected_system=result.get("affected_system", ""),
+                status=result.get("status", ""),
+                created_at=result.get("created_at"),
+                updated_at=result.get("updated_at"),
+                resolution=result.get("resolution", ""),
                 steps=result.get("steps", [])
             )
             processed_results.append(ticket)

@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from src.services.embedding import EmbeddingService
 from src.db.vector_store import VectorStore
+import re
 
 class DataProcessingService:
     def __init__(self):
@@ -23,7 +24,7 @@ class DataProcessingService:
             df = pd.read_csv(file_path)
             
             # Basic validation
-            required_columns = ['title', 'description', 'status']
+            required_columns = ['Summary', 'Status']
             missing_columns = [col for col in required_columns if col not in df.columns]
             if missing_columns:
                 raise ValueError(f"Missing required columns: {missing_columns}")
@@ -43,7 +44,7 @@ class DataProcessingService:
                 try:
                     # Prepare texts for embedding
                     texts = [
-                        f"Title: {row['title']}\nDescription: {row['description']}"
+                        f"Title: {row['Summary']}\nDescription: {row.get('Custom field (Resolution Note)', '')}\n{row.get('Custom field (Root Cause Details)', '')}"
                         for _, row in chunk.iterrows()
                     ]
                     
@@ -53,17 +54,59 @@ class DataProcessingService:
                     # Prepare records for vector store
                     records = []
                     for j, (_, row) in enumerate(chunk.iterrows()):
+                        # Extract resolution information from multiple fields
+                        resolution_note = row.get('Custom field (Resolution Note)', '')
+                        root_cause_details = row.get('Custom field (Root Cause Details)', '')
+                        bug_resolution = row.get('Custom field (Bug Resolution)', '')
+                        root_cause = row.get('Custom field (Root Cause)', '')
+                        
+                        # Combine resolution information
+                        resolution_text = "\n".join(filter(None, [
+                            f"Resolution: {bug_resolution}" if bug_resolution else "",
+                            f"Root Cause: {root_cause}" if root_cause else "",
+                            resolution_note,
+                            root_cause_details
+                        ]))
+                        
+                        # Extract steps from resolution text
+                        steps = []
+                        
+                        # Split text into potential steps
+                        if resolution_note or root_cause_details:
+                            text_to_parse = "\n".join(filter(None, [resolution_note, root_cause_details]))
+                            # Split by common separators
+                            sentences = re.split(r'(?<=[.!?])\s+|\n+|(?<=\d\.)\s+', text_to_parse)
+                            
+                            for sentence in sentences:
+                                sentence = sentence.strip()
+                                # Skip empty or very short sentences
+                                if len(sentence) < 10:
+                                    continue
+                                # Skip greetings and common non-step text
+                                if re.match(r'^(hi|hello|thank|regards|please find|attached)', sentence.lower()):
+                                    continue
+                                # Skip sentences that are just file names or paths
+                                if sentence.lower().endswith(('.xlsx', '.pdf', '.doc')):
+                                    continue
+                                steps.append(sentence)
+                        
+                        # Add resolution type and root cause as context
+                        if bug_resolution:
+                            steps.insert(0, f"Issue Resolution Type: {bug_resolution}")
+                        if root_cause:
+                            steps.insert(1, f"Root Cause: {root_cause}")
+                        
                         record = {
-                            "id": row.get('id', i + j),  # Use provided ID or generate one
-                            "title": row['title'],
-                            "description": row['description'],
-                            "issue_type": row.get('issue_type', ''),
-                            "affected_system": row.get('affected_system', ''),
-                            "status": row['status'],
-                            "resolution": row.get('resolution', ''),
-                            "steps": row.get('steps', '').split('|') if row.get('steps') else [],
-                            "created_at": row.get('created_at', datetime.now()),
-                            "updated_at": row.get('updated_at', datetime.now()),
+                            "id": row.get('Issue id', i + j),
+                            "title": row['Summary'],
+                            "description": resolution_text,
+                            "issue_type": row.get('Issue Type', ''),
+                            "affected_system": row.get('Custom field (Section/Asset Team)', ''),
+                            "status": row['Status'],
+                            "resolution": resolution_text,
+                            "steps": steps,
+                            "created_at": datetime.strptime(row['Created'], '%d-%m-%Y %H:%M') if row.get('Created') else datetime.now(),
+                            "updated_at": datetime.strptime(row['Updated'], '%d-%m-%Y %H:%M') if row.get('Updated') else datetime.now(),
                             "embedding": embeddings[j]
                         }
                         records.append(record)
@@ -106,7 +149,7 @@ class DataProcessingService:
             }
             
             # Check required columns
-            required_columns = ['title', 'description', 'status']
+            required_columns = ['Summary', 'Status']
             missing_columns = [col for col in required_columns if col not in df.columns]
             if missing_columns:
                 validation_results["is_valid"] = False

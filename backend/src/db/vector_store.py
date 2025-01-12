@@ -89,65 +89,46 @@ class VectorStore:
             logging.error(f"Error loading stats: {e}")
             return {}
 
-    def _update_stats(self):
+    def _update_stats(self) -> Dict:
         """Update stats from collection"""
         try:
             stats = self._load_stats()
             
             # Get collection data safely
             try:
-                collection_data = self.collection.get()
-                if collection_data is None:
-                    collection_data = {}
+                # Get collection count
+                count = self.collection.count()
+                
+                # Update stats
+                stats.update({
+                    "total_records": count,
+                    "embedding_count": count,  # Each record has one embedding
+                    "last_updated": datetime.now().isoformat(),
+                    "healthy": True
+                })
+                
+                # Save updated stats
+                self._save_stats(stats)
+                
+                return stats
+                
             except Exception as e:
                 logging.error(f"Error getting collection data: {e}")
-                collection_data = {}
-            
-            # Get counts safely
-            try:
-                total_records = self.collection.count()
-                embeddings = collection_data.get("embeddings", [])
-                embedding_count = len(embeddings) if embeddings else total_records  # If embeddings not returned, assume 1:1
-            except Exception as e:
-                logging.error(f"Error getting counts: {e}")
-                total_records = 0
-                embedding_count = 0
-            
-            # Update stats safely
-            stats["total_records"] = total_records
-            stats["embedding_count"] = embedding_count
-            stats["last_updated"] = datetime.now().isoformat()
-            stats["healthy"] = True
-            
-            # Update sample records if we have data
-            if collection_data and collection_data.get("documents"):
-                sample_docs = collection_data["documents"][:3]  # Get up to 3 samples
-                sample_meta = collection_data.get("metadatas", [{}] * len(sample_docs))
+                stats.update({
+                    "healthy": False,
+                    "last_error": str(e)
+                })
+                return stats
                 
-                stats["sample_records"] = [
-                    {
-                        "text": doc[:200] + "..." if len(doc) > 200 else doc,
-                        "metadata": meta
-                    }
-                    for doc, meta in zip(sample_docs, sample_meta)
-                ]
-            else:
-                stats["sample_records"] = []
-            
-            self._save_stats(stats)
-            return stats
-            
         except Exception as e:
             logging.error(f"Error updating stats: {e}")
-            stats = {
+            return {
                 "total_records": 0,
                 "embedding_count": 0,
                 "last_updated": None,
                 "healthy": False,
-                "sample_records": []
+                "last_error": str(e)
             }
-            self._save_stats(stats)
-            return stats
 
     def _generate_id(self, index: int) -> str:
         """Generate a unique ID for a record"""
@@ -155,62 +136,50 @@ class VectorStore:
         return f"doc_{index}_{timestamp}"
 
     async def add_records(self, records: List[Dict]):
-        """
-        Add records to the vector store.
-        PersistentClient automatically persists changes, no need to call persist() explicitly.
-        """
+        """Add records to the vector store"""
         try:
-            # Log the number of records and first record as sample
-            logging.info(f"Adding {len(records)} records to vector store")
-            if records:
-                logging.info(f"Sample record metadata: {records[0]['metadata']}")
-            
-            # Extract text and metadata
-            texts = []
-            metadatas = []
+            # Prepare data for ChromaDB
             ids = []
+            embeddings = []
+            documents = []
+            metadatas = []
             
             for i, record in enumerate(records):
-                # Validate record
-                if "content" not in record:
-                    raise ValueError(f"Record {i} missing 'content' field")
-                if "metadata" not in record:
-                    raise ValueError(f"Record {i} missing 'metadata' field")
-                
-                # Get content and metadata
-                content = record["content"]
-                metadata = record["metadata"]
-                
-                # Add to lists
-                texts.append(content)
-                metadatas.append(metadata)
-                record_id = self._generate_id(i)
+                record_id = str(record.get('id', f'gen_{i}'))
                 ids.append(record_id)
-                logging.debug(f"Prepared record {i+1}/{len(records)} with ID: {record_id}")
+                embeddings.append(record['embedding'])
+                
+                # Create document text combining title and description
+                doc_text = f"Title: {record['title']}\nDescription: {record['description']}"
+                documents.append(doc_text)
+                
+                # Prepare metadata including all fields
+                metadata = {
+                    'id': record_id,
+                    'Summary': record['title'],
+                    'Issue Type': record.get('issue_type', ''),
+                    'Affected System': record.get('affected_system', ''),
+                    'Status': record.get('status', ''),
+                    'Resolution': record.get('resolution', ''),
+                    'Steps': '|'.join(record.get('steps', [])) if record.get('steps') else '',
+                    'Created': record.get('created_at', '').isoformat() if isinstance(record.get('created_at'), datetime) else str(record.get('created_at', '')),
+                    'Updated': record.get('updated_at', '').isoformat() if isinstance(record.get('updated_at'), datetime) else str(record.get('updated_at', ''))
+                }
+                metadatas.append(metadata)
             
-            # Log collection state before adding
-            before_count = self.collection.count()
-            logging.info(f"Collection count before adding: {before_count}")
-            
-            # Add to collection - ChromaDB will generate embeddings automatically
+            # Add to collection
             self.collection.add(
-                documents=texts,
-                metadatas=metadatas,
-                ids=ids
+                ids=ids,
+                embeddings=embeddings,
+                documents=documents,
+                metadatas=metadatas
             )
             
-            # Verify records were added
-            after_count = self.collection.count()
-            added_count = after_count - before_count
-            logging.info(f"Added {added_count} records. Collection count: {after_count}")
-            
-            # Update stats
-            stats = self._update_stats()
-            logging.info(f"Updated vector store stats: {stats}")
+            return len(ids)
             
         except Exception as e:
-            logging.error(f"Error adding records: {e}")
-            raise Exception(f"Error adding records to vector store: {str(e)}")
+            logging.error(f"Error adding records to vector store: {str(e)}", exc_info=True)
+            raise
 
     def _parse_date(self, date_str: str) -> datetime:
         """Parse date string in various formats to datetime object."""
@@ -235,61 +204,20 @@ class VectorStore:
         Search for similar vectors
         """
         try:
-            # Log collection info and data
-            logging.info("=== DEBUG: Collection Contents ===")
-            collection_data = self.collection.get()
-            logging.info(f"Total items in collection: {len(collection_data['ids']) if collection_data['ids'] else 0}")
-            if collection_data['ids']:
-                logging.info("Sample metadata fields:")
-                for i, metadata in enumerate(collection_data['metadatas'][:2]):  # Show first 2 items
-                    logging.info(f"Item {i + 1} metadata: {metadata}")
-                    logging.info(f"Item {i + 1} content preview: {collection_data['documents'][i][:200]}...")
-            
-            # Log search parameters
-            logging.info("=== DEBUG: Search Parameters ===")
-            logging.info(f"Query embedding shape: {query_embedding.shape}")
-            logging.info(f"Filter criteria: {filter_criteria}")
+            # Convert numpy array to list for ChromaDB
+            embedding_list = query_embedding.tolist()
             
             # Prepare filter
             where_clause = None
             if filter_criteria:
-                # Build a list of valid conditions
                 conditions = []
                 for key, value in filter_criteria.items():
                     if value:
-                        # For each field, check both exact match and "Not specified"
-                        field_variations = [
-                            key,  # Original
-                            key.lower(),  # Lowercase
-                            key.replace(' ', '_'),  # Replace space with underscore
-                            key.lower().replace(' ', '_')  # Both
-                        ]
-                        
-                        # Create conditions for both exact match and "Not specified"
-                        field_matches = []
-                        for field in field_variations:
-                            field_matches.extend([
-                                {field: {"$eq": value}},  # Exact match
-                                {field: {"$eq": "Not specified"}}  # Default value
-                            ])
-                        
-                        field_condition = {"$or": field_matches}
-                        conditions.append(field_condition)
+                        conditions.append({key: {"$eq": value}})
                 
-                # Combine conditions if we have any
                 if conditions:
-                    if len(conditions) == 1:
-                        where_clause = conditions[0]
-                    else:
-                        where_clause = {"$and": conditions}
-
-            # Log the final query
-            logging.info("=== DEBUG: Final Query ===")
-            logging.info(f"Where clause: {where_clause}")
-
-            # Convert numpy array to list for ChromaDB
-            embedding_list = query_embedding.tolist()
-
+                    where_clause = {"$and": conditions} if len(conditions) > 1 else conditions[0]
+            
             # Perform search
             results = self.collection.query(
                 query_embeddings=[embedding_list],
@@ -297,46 +225,38 @@ class VectorStore:
                 n_results=limit
             )
             
-            # Log raw results
-            logging.info("=== DEBUG: Raw Search Results ===")
-            num_results = len(results['ids'][0]) if results['ids'] and results['ids'][0] else 0
-            logging.info(f"Got {num_results} results")
-            if num_results > 0:
-                logging.info(f"First result metadata: {results['metadatas'][0][0]}")
-                logging.info(f"First result content preview: {results['documents'][0][0][:200]}...")
-            
             # Process results
             processed_results = []
-            if results["ids"] and results["ids"][0]:  # Check if we have any results
+            if results["ids"] and results["ids"][0]:
                 for i in range(len(results["ids"][0])):
                     metadata = results["metadatas"][0][i]
                     document = results["documents"][0][i]
                     
-                    # Parse dates using the helper function
-                    created_at = self._parse_date(metadata.get("Created", metadata.get("created", datetime.now().isoformat())))
-                    updated_at = self._parse_date(metadata.get("Updated", metadata.get("updated", datetime.now().isoformat())))
-
-                    # Create ticket from available metadata
+                    # Extract steps from metadata
+                    steps = []
+                    if metadata.get("Steps"):
+                        steps = [step for step in metadata["Steps"].split("|") if step]
+                    
+                    # Create ticket data
                     ticket_data = {
-                        "id": metadata.get("chunk_id", f"unknown_{i}"),
+                        "id": metadata.get("id", f"unknown_{i}"),
                         "title": metadata.get("Summary", "No Title"),
-                        "description": document,  # Use the full document content
-                        "Issue Type": metadata.get("Issue Type", metadata.get("issue_type", metadata.get("type"))),
-                        "Affected System": metadata.get("Affected System", metadata.get("affected_system", metadata.get("system"))),
+                        "description": document,
+                        "issue_type": metadata.get("Issue Type", ""),
+                        "affected_system": metadata.get("Affected System", ""),
                         "status": metadata.get("Status", "Unknown"),
                         "resolution": metadata.get("Resolution", ""),
-                        "steps": metadata.get("Steps", "").split("|") if metadata.get("Steps") else [],
-                        "created_at": created_at,
-                        "updated_at": updated_at,
+                        "steps": steps,
+                        "created_at": self._parse_date(metadata.get("Created", "")),
+                        "updated_at": self._parse_date(metadata.get("Updated", ""))
                     }
                     processed_results.append(ticket_data)
             
-            logging.info(f"Processed {len(processed_results)} results")
             return processed_results
             
         except Exception as e:
-            logging.error(f"Error in search: {str(e)}", exc_info=True)
-            return []
+            logging.error(f"Error in vector store search: {str(e)}", exc_info=True)
+            raise
 
     def get_stats(self) -> Dict:
         """
@@ -381,3 +301,22 @@ class VectorStore:
         except Exception as e:
             logging.error(f"Error querying vector store: {e}")
             return []
+
+    def clear_all_data(self):
+        """Clear all data from the vector store"""
+        try:
+            # Delete the collection
+            self.client.delete_collection("support_tickets")
+            
+            # Recreate the collection
+            self.collection = self.client.create_collection(
+                name="support_tickets",
+                metadata={"hnsw:space": "cosine", "dimension": 1536},  # Azure OpenAI dimension
+                embedding_function=AzureOpenAIEmbeddingFunction()
+            )
+            
+            logging.info("Successfully cleared all data from vector store")
+            return True
+        except Exception as e:
+            logging.error(f"Error clearing vector store: {str(e)}", exc_info=True)
+            raise

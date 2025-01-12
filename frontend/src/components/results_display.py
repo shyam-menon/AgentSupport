@@ -15,19 +15,56 @@ class ResultsDisplay:
         with tabs[0]:
             st.write("### Resolution Steps from Similar Cases")
             
-            # Get resolution steps from similar cases
-            all_steps = []
+            # Get resolution steps and metadata from similar cases
+            resolution_info = []
             for ticket in results:
+                # Get resolution information
+                resolution_data = {
+                    'title': ticket.get('title', ''),
+                    'issue_type': ticket.get('issue_type', ''),
+                    'resolution_type': '',  # Will be extracted from steps
+                    'root_cause': '',  # Will be extracted from steps
+                    'steps': []
+                }
+                
+                # Process steps
                 if ticket.get('steps'):
                     for step in ticket['steps']:
-                        if step not in all_steps:
-                            all_steps.append(step)
+                        if step.startswith('Issue Resolution Type:'):
+                            resolution_data['resolution_type'] = step.replace('Issue Resolution Type:', '').strip()
+                        elif step.startswith('Root Cause:'):
+                            resolution_data['root_cause'] = step.replace('Root Cause:', '').strip()
+                        else:
+                            resolution_data['steps'].append(step)
+                
+                # Only add if we have meaningful information
+                if resolution_data['steps'] or resolution_data['resolution_type'] or resolution_data['root_cause']:
+                    resolution_info.append(resolution_data)
             
-            if all_steps:
-                for i, step in enumerate(all_steps, 1):
-                    st.markdown(f"**{i}.** {step}")
+            if resolution_info:
+                for info in resolution_info:
+                    # Show issue title and type
+                    st.markdown(f"#### {info['title']}")
+                    if info['issue_type']:
+                        st.markdown(f"*Issue Type: {info['issue_type']}*")
+                    
+                    # Show resolution context
+                    if info['resolution_type'] or info['root_cause']:
+                        st.markdown("**Resolution Context:**")
+                        if info['resolution_type']:
+                            st.markdown(f"- Resolution Type: {info['resolution_type']}")
+                        if info['root_cause']:
+                            st.markdown(f"- Root Cause: {info['root_cause']}")
+                    
+                    # Show resolution steps
+                    if info['steps']:
+                        st.markdown("**Resolution Steps:**")
+                        for i, step in enumerate(info['steps'], 1):
+                            st.markdown(f"{i}. {step}")
+                    
+                    st.markdown("---")  # Add separator between tickets
             else:
-                st.info("No specific resolution steps found in similar cases")
+                st.info("No specific resolution steps found for similar cases. Try adjusting your search criteria.")
             
             # Add AI-suggested steps if available
             if any('ai_suggestion' in ticket for ticket in results):
