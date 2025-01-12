@@ -12,10 +12,9 @@ class SearchService:
         self.vector_store = VectorStore()
         self.embedding_service = EmbeddingService()
         self.chat_client = AzureOpenAI(
-            api_key=settings.AZURE_OPENAI_API_KEY,
-            api_version=settings.AZURE_OPENAI_API_VERSION,
-            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
-            default_headers={"Accept": "application/json"},
+            api_key="cc1f5e10eee54bd7b7a35d4bc8d412ee",
+            api_version="2023-05-15",
+            azure_endpoint="https://davinci-dev-openai-api.corp.hpicloud.net/salesly",
             http_client=httpx.Client(verify=False)  # Skip SSL verification for internal endpoints
         )
 
@@ -148,7 +147,7 @@ Response:"""
 
             # Get completion from Azure OpenAI
             response = self.chat_client.chat.completions.create(
-                model="gpt-35-turbo",  # or your specific deployment name
+                model="gpt-4",  # Using gpt-4 model as per working sample
                 messages=[
                     {"role": "system", "content": "You are a helpful IT support assistant. Provide clear, actionable solutions based on similar support tickets."},
                     {"role": "user", "content": prompt}
@@ -161,3 +160,17 @@ Response:"""
 
         except Exception as e:
             return f"Error generating AI response: {str(e)}"
+
+    def get_chat_completion(self, prompt: str) -> str:
+        """
+        Get chat completion from Azure OpenAI
+        """
+        try:
+            response = self.chat_client.chat.completions.create(
+                model="gpt-4",  # Using gpt-4 model as per working sample
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logging.error(f"Error getting chat completion: {e}")
+            raise
