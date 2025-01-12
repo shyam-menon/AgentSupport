@@ -13,6 +13,21 @@ class APIClient:
         self.base_url = os.getenv("BACKEND_URL", "http://localhost:8080")
         # Initialize token from session state if available
         self.token = st.session_state.get("access_token")
+    
+    def get(self, endpoint: str, params=None):
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        response = requests.get(url, params=params)
+        return response.json()
+
+    def post(self, endpoint: str, data=None, json=None):
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        response = requests.post(url, data=data, json=json)
+        return response.json()
+
+    def delete(self, endpoint: str):
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        response = requests.delete(url)
+        return response.json()
 
     def _get_headers(self):
         """Get headers with authentication token if available"""
