@@ -57,3 +57,36 @@ async def get_system_stats(
             status_code=500,
             detail=f"Error getting system stats: {str(e)}"
         )
+
+@router.get("/debug/vector-store")
+async def get_vector_store_debug():
+    """Get debug information about the vector store"""
+    try:
+        admin_service = AdminService()
+        store_stats = admin_service.vector_store.get_stats()
+        
+        # Get collection info
+        collection_data = admin_service.vector_store.collection.get()
+        
+        debug_info = {
+            "stats": store_stats,
+            "collection_info": {
+                "total_items": len(collection_data["ids"]) if collection_data["ids"] else 0,
+                "sample_items": []
+            }
+        }
+        
+        # Add sample items
+        if collection_data["ids"] and len(collection_data["ids"]) > 0:
+            for i in range(min(2, len(collection_data["ids"]))):
+                sample_item = {
+                    "id": collection_data["ids"][i],
+                    "metadata": collection_data["metadatas"][i],
+                    "document_preview": collection_data["documents"][i][:200] + "..."
+                }
+                debug_info["collection_info"]["sample_items"].append(sample_item)
+        
+        return debug_info
+    except Exception as e:
+        logging.error(f"Error getting vector store debug info: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

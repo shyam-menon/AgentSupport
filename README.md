@@ -163,6 +163,9 @@ cd backend
 # Your prompt should now show (venv) indicating the environment is active
 # Run the backend server
 python -m uvicorn src.main:app --host localhost --port 8080 --log-level info
+
+#Run with additional logs
+python -m uvicorn src.main:app --host localhost --port 8080 --reload
 ```
 
 #### For Frontend:

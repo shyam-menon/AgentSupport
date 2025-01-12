@@ -43,11 +43,13 @@ class VectorStore:
         # Initialize embedding service
         self.embedding_service = EmbeddingService()
         
-        self.client = chromadb.Client(chromadb.Settings(
-            persist_directory=chroma_dir,
-            anonymized_telemetry=False
-        ))
+        # Initialize ChromaDB with persistence
+        self.client = chromadb.PersistentClient(
+            path=chroma_dir,
+            settings=chromadb.Settings(anonymized_telemetry=False)
+        )
         
+        # Get or create collection with embedding function
         self.collection = self.client.get_or_create_collection(
             name="support_tickets",
             metadata={"hnsw:space": "cosine", "dimension": 1536},  # Azure OpenAI dimension
@@ -210,6 +212,19 @@ class VectorStore:
             logging.error(f"Error adding records: {e}")
             raise Exception(f"Error adding records to vector store: {str(e)}")
 
+    def _parse_date(self, date_str: str) -> datetime:
+        """Parse date string in various formats to datetime object."""
+        try:
+            # Try ISO format first
+            return datetime.fromisoformat(date_str)
+        except ValueError:
+            try:
+                # Try DD-MM-YYYY HH:mm format
+                return datetime.strptime(date_str, "%d-%m-%Y %H:%M")
+            except ValueError:
+                # Return current time if parsing fails
+                return datetime.now()
+
     async def search(
         self,
         query_embedding: np.ndarray,
@@ -220,9 +235,20 @@ class VectorStore:
         Search for similar vectors
         """
         try:
-            # Log collection info
-            collection_info = self.collection.get()
-            logging.info(f"Collection info - count: {self.collection.count()}, name: {self.collection.name}")
+            # Log collection info and data
+            logging.info("=== DEBUG: Collection Contents ===")
+            collection_data = self.collection.get()
+            logging.info(f"Total items in collection: {len(collection_data['ids']) if collection_data['ids'] else 0}")
+            if collection_data['ids']:
+                logging.info("Sample metadata fields:")
+                for i, metadata in enumerate(collection_data['metadatas'][:2]):  # Show first 2 items
+                    logging.info(f"Item {i + 1} metadata: {metadata}")
+                    logging.info(f"Item {i + 1} content preview: {collection_data['documents'][i][:200]}...")
+            
+            # Log search parameters
+            logging.info("=== DEBUG: Search Parameters ===")
+            logging.info(f"Query embedding shape: {query_embedding.shape}")
+            logging.info(f"Filter criteria: {filter_criteria}")
             
             # Prepare filter
             where_clause = None
@@ -231,7 +257,24 @@ class VectorStore:
                 conditions = []
                 for key, value in filter_criteria.items():
                     if value:
-                        conditions.append({key: {"$eq": value}})
+                        # For each field, check both exact match and "Not specified"
+                        field_variations = [
+                            key,  # Original
+                            key.lower(),  # Lowercase
+                            key.replace(' ', '_'),  # Replace space with underscore
+                            key.lower().replace(' ', '_')  # Both
+                        ]
+                        
+                        # Create conditions for both exact match and "Not specified"
+                        field_matches = []
+                        for field in field_variations:
+                            field_matches.extend([
+                                {field: {"$eq": value}},  # Exact match
+                                {field: {"$eq": "Not specified"}}  # Default value
+                            ])
+                        
+                        field_condition = {"$or": field_matches}
+                        conditions.append(field_condition)
                 
                 # Combine conditions if we have any
                 if conditions:
@@ -240,47 +283,60 @@ class VectorStore:
                     else:
                         where_clause = {"$and": conditions}
 
-            # Log the query for debugging
-            logging.info(f"Searching with where clause: {where_clause}")
-            logging.info(f"Query embedding shape: {query_embedding.shape}")
+            # Log the final query
+            logging.info("=== DEBUG: Final Query ===")
+            logging.info(f"Where clause: {where_clause}")
 
             # Convert numpy array to list for ChromaDB
             embedding_list = query_embedding.tolist()
 
             # Perform search
             results = self.collection.query(
-                query_embeddings=[embedding_list],  # Pass as list of lists
+                query_embeddings=[embedding_list],
                 where=where_clause,
                 n_results=limit
             )
             
-            logging.info(f"Raw search results: {results}")
-
+            # Log raw results
+            logging.info("=== DEBUG: Raw Search Results ===")
+            num_results = len(results['ids'][0]) if results['ids'] and results['ids'][0] else 0
+            logging.info(f"Got {num_results} results")
+            if num_results > 0:
+                logging.info(f"First result metadata: {results['metadatas'][0][0]}")
+                logging.info(f"First result content preview: {results['documents'][0][0][:200]}...")
+            
             # Process results
             processed_results = []
             if results["ids"] and results["ids"][0]:  # Check if we have any results
                 for i in range(len(results["ids"][0])):
                     metadata = results["metadatas"][0][i]
-                    processed_results.append({
-                        "id": int(metadata["id"]),
-                        "title": metadata.get("title"),
-                        "description": results["documents"][0][i],
-                        "issue_type": metadata.get("issue_type"),
-                        "affected_system": metadata.get("affected_system"),
-                        "status": metadata.get("status"),
-                        "resolution": metadata.get("resolution"),
-                        "steps": metadata.get("steps", "").split("|") if metadata.get("steps") else [],
-                        "created_at": datetime.fromisoformat(metadata.get("created_at")),
-                        "updated_at": datetime.fromisoformat(metadata.get("updated_at")),
-                        "source_file": metadata.get("markdown_file")  # Include markdown file reference
-                    })
+                    document = results["documents"][0][i]
+                    
+                    # Parse dates using the helper function
+                    created_at = self._parse_date(metadata.get("Created", metadata.get("created", datetime.now().isoformat())))
+                    updated_at = self._parse_date(metadata.get("Updated", metadata.get("updated", datetime.now().isoformat())))
 
+                    # Create ticket from available metadata
+                    ticket_data = {
+                        "id": metadata.get("chunk_id", f"unknown_{i}"),
+                        "title": metadata.get("Summary", "No Title"),
+                        "description": document,  # Use the full document content
+                        "Issue Type": metadata.get("Issue Type", metadata.get("issue_type", metadata.get("type"))),
+                        "Affected System": metadata.get("Affected System", metadata.get("affected_system", metadata.get("system"))),
+                        "status": metadata.get("Status", "Unknown"),
+                        "resolution": metadata.get("Resolution", ""),
+                        "steps": metadata.get("Steps", "").split("|") if metadata.get("Steps") else [],
+                        "created_at": created_at,
+                        "updated_at": updated_at,
+                    }
+                    processed_results.append(ticket_data)
+            
             logging.info(f"Processed {len(processed_results)} results")
             return processed_results
-
+            
         except Exception as e:
-            logging.error(f"Error searching in vector store: {e}")
-            raise Exception(f"Error searching in vector store: {str(e)}")
+            logging.error(f"Error in search: {str(e)}", exc_info=True)
+            return []
 
     def get_stats(self) -> Dict:
         """

@@ -69,16 +69,80 @@ class AdminService:
             for i, (chunk, markdown_file) in enumerate(zip(markdown_chunks, markdown_files), 1):
                 logging.info(f"Processing chunk {i}/{total_chunks} for vector store")
                 
+                # Parse the chunk to extract metadata
+                lines = chunk.split('\n')
+                metadata = {
+                    "source": file.filename,
+                    "chunk_id": f"chunk_{i}",
+                    "total_chunks": total_chunks,
+                    "processed_at": datetime.now().isoformat(),
+                    "markdown_file": os.path.basename(markdown_file)
+                }
+                
+                # Extract fields from the chunk content
+                current_field = None
+                field_content = []
+                for line in lines:
+                    if line.startswith('### '):
+                        # If we were collecting a field, save it
+                        if current_field and field_content:
+                            field_value = '\n'.join(field_content).strip()
+                            if field_value:
+                                # Store field in multiple formats to improve matching
+                                metadata[current_field] = field_value  # Original
+                                metadata[current_field.lower()] = field_value  # Lowercase
+                                metadata[current_field.replace(' ', '_')] = field_value  # With underscores
+                                metadata[current_field.lower().replace(' ', '_')] = field_value  # Lowercase with underscores
+                            field_content = []
+                        # Start new field
+                        current_field = line[4:].strip()
+                    elif current_field and line.strip():
+                        field_content.append(line.strip())
+                
+                # Save the last field if any
+                if current_field and field_content:
+                    field_value = '\n'.join(field_content).strip()
+                    if field_value:
+                        # Store field in multiple formats to improve matching
+                        metadata[current_field] = field_value  # Original
+                        metadata[current_field.lower()] = field_value  # Lowercase
+                        metadata[current_field.replace(' ', '_')] = field_value  # With underscores
+                        metadata[current_field.lower().replace(' ', '_')] = field_value  # Lowercase with underscores
+
+                # Add standard fields that should always be present
+                standard_fields = [
+                    "Issue Type",
+                    "Affected System",
+                    "Priority",
+                    "Status",
+                    "Summary"
+                ]
+                
+                # Ensure all standard fields exist in metadata
+                for field in standard_fields:
+                    if field not in metadata:
+                        # Try to find the field in different formats
+                        field_variations = [
+                            field,
+                            field.lower(),
+                            field.replace(' ', '_'),
+                            field.lower().replace(' ', '_')
+                        ]
+                        # Find first matching variation
+                        for var in field_variations:
+                            if var in metadata:
+                                metadata[field] = metadata[var]
+                                break
+                        # If still not found, set to default
+                        if field not in metadata:
+                            metadata[field] = "Not specified"
+
+                logging.info(f"Extracted metadata for chunk {i}: {metadata}")
+                
                 # Create record with content and metadata
                 record = {
                     "content": chunk,
-                    "metadata": {
-                        "source": file.filename,
-                        "chunk_id": f"chunk_{i}",
-                        "total_chunks": total_chunks,
-                        "processed_at": datetime.now().isoformat(),
-                        "markdown_file": os.path.basename(markdown_file)
-                    }
+                    "metadata": metadata
                 }
                 records.append(record)
             

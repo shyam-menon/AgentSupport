@@ -181,36 +181,56 @@ class MarkdownConverter:
             if df.empty:
                 raise ValueError("DataFrame is empty")
 
+            logging.info("\n=== Converting DataFrame to Markdown ===")
+            logging.info(f"DataFrame shape: {df.shape}")
+            logging.info(f"DataFrame columns: {df.columns.tolist()}")
+            logging.info(f"First row preview: {df.iloc[0].to_dict()}")
+
             # Convert each row to markdown
             markdown_chunks = []
             for i in range(0, len(df), self.chunk_size):
                 chunk_df = df.iloc[i:i + self.chunk_size]
+                logging.info(f"\nProcessing chunk {i//self.chunk_size + 1}")
                 
                 # Create markdown content for this chunk
                 chunk_content = []
                 for _, row in chunk_df.iterrows():
                     # Add row as section
-                    chunk_content.append("## Row Content")
+                    chunk_content.append("## Ticket Content")
                     
                     # Add each column as a subsection
                     for col in row.index:
                         value = row[col]
                         if pd.notna(value):  # Skip NaN/None values
-                            chunk_content.append(f"### {col}")
-                            chunk_content.append(str(value))
+                            # Clean and format the field name
+                            clean_col = str(col).strip()
+                            if clean_col.lower() in ['type', 'system']:
+                                # Special handling for type and system fields
+                                if clean_col.lower() == 'type':
+                                    clean_col = 'Issue Type'
+                                elif clean_col.lower() == 'system':
+                                    clean_col = 'Affected System'
+                            
+                            chunk_content.append(f"### {clean_col}")
+                            chunk_content.append(str(value).strip())
                             chunk_content.append("")  # Empty line for readability
+                    
+                    logging.info(f"Added ticket with fields: {[str(col).strip() for col in row.index if pd.notna(row[col])]}")
                 
                 # Join chunk content and add to chunks
                 if chunk_content:
-                    markdown_chunks.append("\n".join(chunk_content))
+                    chunk_text = "\n".join(chunk_content)
+                    markdown_chunks.append(chunk_text)
+                    logging.info(f"Chunk {i//self.chunk_size + 1} size: {len(chunk_text)} characters")
 
             if not markdown_chunks:
                 raise ValueError("No valid content found in DataFrame")
 
+            logging.info(f"\nGenerated {len(markdown_chunks)} markdown chunks")
             return markdown_chunks
 
         except Exception as e:
-            logging.error(f"Error converting DataFrame to markdown: {e}")
+            logging.error(f"Error converting DataFrame to markdown: {e}", exc_info=True)
             raise Exception(f"Error converting DataFrame to markdown: {str(e)}")
 
     def cleanup_markdown_files(self, markdown_files: List[str]):

@@ -17,7 +17,7 @@ class TicketUpdate(TicketBase):
     steps: Optional[List[str]] = None
 
 class TicketInDBBase(TicketBase):
-    id: int
+    id: str
     created_at: datetime
     updated_at: datetime
     resolution: Optional[str] = None

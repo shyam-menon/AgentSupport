@@ -30,31 +30,51 @@ class SearchService:
         Search for similar tickets using vector similarity
         """
         try:
-            logging.info(f"Starting search with description: '{description[:100]}...'")
-            logging.info(f"Search criteria - Issue Type: {issue_type}, Affected System: {affected_system}, Limit: {limit}")
+            logging.info("\n=== Starting Search Request ===")
+            logging.info(f"Description: '{description}'")
+            logging.info(f"Issue Type: '{issue_type}'")
+            logging.info(f"Affected System: '{affected_system}'")
+            logging.info(f"Limit: {limit}")
             
             # Get store stats for debugging
             stats = self.vector_store.get_stats()
-            logging.info(f"Vector store stats - Total Records: {stats.get('total_records')}, Embedding Count: {stats.get('embedding_count')}")
+            logging.info("\n=== Vector Store Stats ===")
+            logging.info(f"Stats: {stats}")
             
             # Generate embedding for the query
+            logging.info("\n=== Generating Query Embedding ===")
             query_embedding = await self.embedding_service.generate_embedding(description)
-            logging.info(f"Generated query embedding with shape: {query_embedding.shape}")
+            logging.info(f"Generated embedding with shape: {query_embedding.shape}")
+            logging.info(f"Embedding sample (first 5 values): {query_embedding[:5]}")
             
             # Search in vector store
+            logging.info("\n=== Executing Vector Store Search ===")
+            filter_criteria = {}
+            
+            # Add filters only if they are provided and not empty
+            if issue_type and issue_type.strip():
+                filter_criteria["Issue Type"] = issue_type
+            if affected_system and affected_system.strip():
+                filter_criteria["Affected System"] = affected_system
+            
             results = await self.vector_store.search(
                 query_embedding,
-                filter_criteria={
-                    "issue_type": issue_type,
-                    "affected_system": affected_system
-                },
+                filter_criteria=filter_criteria,
                 limit=limit
             )
-            logging.info(f"Vector store returned {len(results)} results")
+            logging.info(f"\n=== Search Results ===")
+            logging.info(f"Number of results: {len(results)}")
+            for i, result in enumerate(results):
+                logging.info(f"\nResult {i+1}:")
+                logging.info(f"ID: {result.get('id')}")
+                logging.info(f"Issue Type: {result.get('Issue Type')}")
+                logging.info(f"Affected System: {result.get('Affected System')}")
+                logging.info(f"Description Preview: {result.get('description')[:200]}...")
             
             # Process results and get AI-generated response
             processed_tickets = await self.process_results(results)
-            logging.info(f"Processed {len(processed_tickets)} tickets")
+            logging.info(f"\n=== Processed Results ===")
+            logging.info(f"Number of processed tickets: {len(processed_tickets)}")
             
             # Generate AI response if we have results
             if processed_tickets:
@@ -70,7 +90,7 @@ class SearchService:
             return processed_tickets
             
         except Exception as e:
-            logging.error(f"Error in search_similar_tickets: {str(e)}")
+            logging.error(f"Error in search_similar_tickets: {str(e)}", exc_info=True)
             raise
 
     async def process_results(self, results: List[dict]) -> List[Ticket]:
@@ -84,8 +104,8 @@ class SearchService:
                 id=result["id"],
                 title=result["title"],
                 description=result["description"],
-                issue_type=result.get("issue_type"),
-                affected_system=result.get("affected_system"),
+                issue_type=result.get("Issue Type"),
+                affected_system=result.get("Affected System"),
                 status=result["status"],
                 created_at=result["created_at"],
                 updated_at=result["updated_at"],
